@@ -1026,5 +1026,528 @@ CREATE INDEX idx_chat_pinned_messages_pinned_by ON chat_pinned_messages(pinned_b
 CREATE INDEX idx_chat_pinned_messages_message ON chat_pinned_messages(message_id);
 
 -- ==========================================
--- END OF PHASE D
+-- HELPER FUNCTIONS (all SECURITY DEFINER, search_path locked)
+-- ==========================================
+
+-- ─── Tenant identity ───
+CREATE OR REPLACE FUNCTION get_user_tenant_id()
+RETURNS UUID AS $$
+  SELECT tenant_id FROM public.profiles WHERE id = auth.uid();
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+CREATE OR REPLACE FUNCTION is_platform_admin()
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.platform_admins
+    WHERE id = auth.uid() AND active = true
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+-- ─── Role checks (within tenant only) ───
+CREATE OR REPLACE FUNCTION get_user_role()
+RETURNS user_role AS $$
+  SELECT role FROM public.profiles WHERE id = auth.uid();
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+CREATE OR REPLACE FUNCTION is_tenant_admin()
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid()
+      AND role IN ('owner', 'accountant', 'hq')
+      AND active = true
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+-- Backward-compat alias: is_admin() means tenant admin (NOT platform admin)
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN AS $$
+  SELECT public.is_tenant_admin();
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+-- ─── Store scope ───
+CREATE OR REPLACE FUNCTION get_user_store_ids()
+RETURNS SETOF UUID AS $$
+  SELECT us.store_id
+  FROM public.user_stores us
+  JOIN public.stores s ON s.id = us.store_id
+  WHERE us.user_id = auth.uid()
+    AND s.tenant_id = public.get_user_tenant_id();
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+-- ─── Feature + permission resolution ───
+CREATE OR REPLACE FUNCTION is_feature_enabled(p_store_id UUID, p_feature_key TEXT)
+RETURNS BOOLEAN AS $$
+  SELECT COALESCE(
+    (SELECT enabled FROM public.store_features
+       WHERE store_id = p_store_id AND feature_key = p_feature_key),
+    true   -- absent row = enabled by default
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+CREATE OR REPLACE FUNCTION has_role_permission(p_permission_key TEXT)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.role_permissions rp
+    JOIN public.profiles p ON p.tenant_id = rp.tenant_id AND p.role = rp.role
+    WHERE p.id = auth.uid()
+      AND rp.permission_key = p_permission_key
+      AND rp.enabled = true
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+-- ─── Print server health ───
+CREATE OR REPLACE FUNCTION is_print_server_online(p_store_id UUID)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.print_server_status
+    WHERE store_id = p_store_id
+      AND last_heartbeat > now() - INTERVAL '2 minutes'
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public;
+
+-- ─── Chat helpers ───
+CREATE OR REPLACE FUNCTION is_chat_member(p_room_id UUID)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.chat_members
+    WHERE room_id = p_room_id AND user_id = auth.uid()
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+CREATE OR REPLACE FUNCTION is_action_card_timed_out(p_metadata JSONB)
+RETURNS BOOLEAN AS $$
+BEGIN
+  IF p_metadata->>'status' != 'claimed' THEN RETURN false; END IF;
+  IF p_metadata->>'claimed_at' IS NULL OR p_metadata->>'timeout_minutes' IS NULL THEN RETURN false; END IF;
+  RETURN (
+    (p_metadata->>'claimed_at')::timestamptz
+    + ((p_metadata->>'timeout_minutes')::int * interval '1 minute')
+    < now()
+  );
+END;
+$$ LANGUAGE plpgsql IMMUTABLE SET search_path = public;
+
+CREATE OR REPLACE FUNCTION auto_release_timed_out(p_metadata JSONB)
+RETURNS JSONB AS $$
+BEGIN
+  RETURN p_metadata || jsonb_build_object(
+    'status', 'pending', 'claimed_by', null, 'claimed_by_name', null,
+    'claimed_at', null, 'auto_released', true, 'auto_released_at', now()
+  );
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE OR REPLACE FUNCTION insert_bot_message(
+  p_room_id UUID, p_type chat_message_type, p_content TEXT, p_metadata JSONB DEFAULT NULL
+) RETURNS UUID AS $$
+DECLARE v_id UUID;
+BEGIN
+  INSERT INTO public.chat_messages (room_id, sender_id, type, content, metadata)
+  VALUES (p_room_id, NULL, p_type, p_content, p_metadata)
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+CREATE OR REPLACE FUNCTION claim_action_card(p_message_id UUID, p_user_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+  v_msg public.chat_messages;
+  v_meta JSONB;
+  v_profile RECORD;
+BEGIN
+  SELECT * INTO v_msg FROM public.chat_messages WHERE id = p_message_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('success', false, 'error', 'Message not found'); END IF;
+  IF v_msg.type != 'action_card' THEN RETURN jsonb_build_object('success', false, 'error', 'Not an action card'); END IF;
+
+  v_meta := v_msg.metadata;
+
+  IF v_meta->>'status' = 'claimed' AND public.is_action_card_timed_out(v_meta) THEN
+    v_meta := public.auto_release_timed_out(v_meta);
+    UPDATE public.chat_messages SET metadata = v_meta WHERE id = p_message_id;
+  END IF;
+
+  IF v_meta->>'status' NOT IN ('pending', 'pending_bar') THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Already claimed',
+      'claimed_by', v_meta->>'claimed_by_name');
+  END IF;
+
+  SELECT display_name, username INTO v_profile FROM public.profiles WHERE id = p_user_id;
+
+  v_meta := v_meta || jsonb_build_object(
+    'status', 'claimed',
+    'claimed_by', p_user_id,
+    'claimed_by_name', COALESCE(v_profile.display_name, v_profile.username),
+    'claimed_at', now(),
+    'auto_released', null,
+    'auto_released_at', null
+  );
+
+  UPDATE public.chat_messages SET metadata = v_meta WHERE id = p_message_id;
+  RETURN jsonb_build_object('success', true, 'metadata', v_meta);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION complete_action_card(
+  p_message_id UUID, p_user_id UUID, p_notes TEXT DEFAULT NULL, p_photo_url TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+  v_msg public.chat_messages;
+  v_meta JSONB;
+BEGIN
+  SELECT * INTO v_msg FROM public.chat_messages WHERE id = p_message_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('success', false, 'error', 'Message not found'); END IF;
+
+  v_meta := v_msg.metadata;
+  IF v_meta->>'status' != 'claimed' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Not in claimed status');
+  END IF;
+
+  IF public.is_action_card_timed_out(v_meta) THEN
+    v_meta := public.auto_release_timed_out(v_meta);
+    UPDATE public.chat_messages SET metadata = v_meta WHERE id = p_message_id;
+    RETURN jsonb_build_object('success', false, 'error', 'หมดเวลาแล้ว งานถูกปล่อยกลับคิว',
+      'metadata', v_meta, 'timed_out', true);
+  END IF;
+
+  IF v_meta->>'claimed_by' != p_user_id::text THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Not claimed by you');
+  END IF;
+
+  v_meta := v_meta || jsonb_build_object(
+    'status', 'completed',
+    'completed_at', now(),
+    'completion_notes', p_notes,
+    'confirmation_photo_url', p_photo_url
+  );
+
+  UPDATE public.chat_messages SET metadata = v_meta WHERE id = p_message_id;
+  RETURN jsonb_build_object('success', true, 'metadata', v_meta);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION release_action_card(p_message_id UUID, p_user_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+  v_msg public.chat_messages;
+  v_meta JSONB;
+BEGIN
+  SELECT * INTO v_msg FROM public.chat_messages WHERE id = p_message_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('success', false, 'error', 'Message not found'); END IF;
+
+  v_meta := v_msg.metadata;
+
+  IF v_meta->>'status' = 'claimed' AND public.is_action_card_timed_out(v_meta) THEN
+    v_meta := public.auto_release_timed_out(v_meta);
+    UPDATE public.chat_messages SET metadata = v_meta WHERE id = p_message_id;
+    RETURN jsonb_build_object('success', true, 'metadata', v_meta);
+  END IF;
+
+  IF v_meta->>'claimed_by' != p_user_id::text THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Not claimed by you');
+  END IF;
+
+  v_meta := v_meta || jsonb_build_object(
+    'status', CASE WHEN (v_meta->>'_bar_step')::boolean IS TRUE THEN 'pending_bar' ELSE 'pending' END,
+    'claimed_by', null,
+    'claimed_by_name', null,
+    'claimed_at', null,
+    'released_by', p_user_id,
+    'released_at', now(),
+    '_bar_step', null
+  );
+
+  UPDATE public.chat_messages SET metadata = v_meta WHERE id = p_message_id;
+  RETURN jsonb_build_object('success', true, 'metadata', v_meta);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION get_chat_unread_counts(p_user_id UUID)
+RETURNS TABLE(room_id UUID, unread_count BIGINT) AS $$
+  SELECT cm.room_id, COUNT(msg.id) AS unread_count
+  FROM public.chat_members cm
+  LEFT JOIN public.chat_messages msg
+    ON msg.room_id = cm.room_id AND msg.created_at > cm.last_read_at
+    AND msg.sender_id != p_user_id AND msg.archived_at IS NULL
+  WHERE cm.user_id = p_user_id
+  GROUP BY cm.room_id;
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+-- ==========================================
+-- TRIGGER FUNCTIONS
+-- ==========================================
+
+-- ─── Branch limit enforcement ───
+CREATE OR REPLACE FUNCTION enforce_tenant_branch_limit()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_max   INTEGER;
+  v_count INTEGER;
+BEGIN
+  SELECT max_branches INTO v_max FROM public.tenants WHERE id = NEW.tenant_id;
+  IF v_max IS NULL THEN
+    RAISE EXCEPTION 'Store must belong to a valid tenant (tenant_id=%)', NEW.tenant_id;
+  END IF;
+
+  SELECT COUNT(*) INTO v_count
+  FROM public.stores
+  WHERE tenant_id = NEW.tenant_id
+    AND active = true
+    AND id IS DISTINCT FROM NEW.id;       -- exclude self on UPDATE
+
+  IF v_count >= v_max THEN
+    RAISE EXCEPTION 'Branch limit reached for tenant % (max=%). Upgrade plan to add more.',
+      NEW.tenant_id, v_max USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER trg_stores_enforce_branch_limit_insert
+  BEFORE INSERT ON stores
+  FOR EACH ROW WHEN (NEW.active = true)
+  EXECUTE FUNCTION enforce_tenant_branch_limit();
+
+CREATE TRIGGER trg_stores_enforce_branch_limit_update
+  BEFORE UPDATE ON stores
+  FOR EACH ROW WHEN (OLD.active = false AND NEW.active = true)
+  EXECUTE FUNCTION enforce_tenant_branch_limit();
+
+-- ─── tenant_id ↔ store_id consistency ───
+-- Auto-fills tenant_id from store_id if NULL, raises if mismatched.
+CREATE OR REPLACE FUNCTION enforce_tenant_store_consistency()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_tenant UUID;
+BEGIN
+  SELECT tenant_id INTO v_tenant FROM public.stores WHERE id = NEW.store_id;
+  IF v_tenant IS NULL THEN
+    RAISE EXCEPTION 'Invalid store_id %: store not found', NEW.store_id;
+  END IF;
+
+  IF NEW.tenant_id IS NULL THEN
+    NEW.tenant_id := v_tenant;
+  ELSIF NEW.tenant_id != v_tenant THEN
+    RAISE EXCEPTION 'tenant_id mismatch: row tenant=% but store belongs to tenant=%',
+      NEW.tenant_id, v_tenant;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER trg_products_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON products
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_manual_counts_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON manual_counts
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_ocr_logs_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON ocr_logs
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_comparisons_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON comparisons
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_deposits_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON deposits
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_withdrawals_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON withdrawals
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_deposit_requests_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON deposit_requests
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_print_queue_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON print_queue
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_announcements_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON announcements
+  FOR EACH ROW WHEN (NEW.store_id IS NOT NULL)
+  EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_commission_entries_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON commission_entries
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_commission_payments_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON commission_payments
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+
+-- ─── Cross-tenant transfer/borrow guard ───
+CREATE OR REPLACE FUNCTION enforce_within_tenant_pair()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_from_tenant UUID;
+  v_to_tenant   UUID;
+BEGIN
+  SELECT tenant_id INTO v_from_tenant FROM public.stores WHERE id = NEW.from_store_id;
+  SELECT tenant_id INTO v_to_tenant   FROM public.stores WHERE id = NEW.to_store_id;
+  IF v_from_tenant IS NULL OR v_to_tenant IS NULL THEN
+    RAISE EXCEPTION 'Invalid from_store_id or to_store_id';
+  END IF;
+  IF v_from_tenant != v_to_tenant THEN
+    RAISE EXCEPTION 'Cross-tenant operations are forbidden (from=%, to=%)', v_from_tenant, v_to_tenant;
+  END IF;
+  IF NEW.tenant_id IS NULL THEN
+    NEW.tenant_id := v_from_tenant;
+  ELSIF NEW.tenant_id != v_from_tenant THEN
+    RAISE EXCEPTION 'tenant_id mismatch with store pair (rows tenant=%, stores tenant=%)',
+      NEW.tenant_id, v_from_tenant;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER trg_transfers_within_tenant
+  BEFORE INSERT OR UPDATE OF from_store_id, to_store_id, tenant_id ON transfers
+  FOR EACH ROW EXECUTE FUNCTION enforce_within_tenant_pair();
+CREATE TRIGGER trg_borrows_within_tenant
+  BEFORE INSERT OR UPDATE OF from_store_id, to_store_id, tenant_id ON borrows
+  FOR EACH ROW EXECUTE FUNCTION enforce_within_tenant_pair();
+
+-- ─── Auth user creation ───
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  _username   TEXT;
+  _role       user_role;
+  _tenant_id  UUID;
+  _invitation RECORD;
+BEGIN
+  -- Path 1: Platform admin (metadata flag set)
+  IF NEW.raw_user_meta_data->>'is_platform_admin' = 'true' THEN
+    INSERT INTO public.platform_admins (id, email, display_name, role)
+    VALUES (
+      NEW.id,
+      NEW.email,
+      COALESCE(NEW.raw_user_meta_data->>'display_name', NEW.email),
+      COALESCE((NEW.raw_user_meta_data->>'admin_role')::platform_admin_role, 'admin')
+    )
+    ON CONFLICT (id) DO NOTHING;
+    RETURN NEW;
+  END IF;
+
+  -- Path 2: Tenant user — must specify tenant_id OR carry an invitation_token
+  _tenant_id := NULLIF(NEW.raw_user_meta_data->>'tenant_id', '')::uuid;
+
+  IF _tenant_id IS NULL AND NEW.raw_user_meta_data ? 'invitation_token' THEN
+    SELECT tenant_id, role INTO _invitation
+    FROM public.tenant_invitations
+    WHERE token = NEW.raw_user_meta_data->>'invitation_token'
+      AND accepted_at IS NULL
+      AND expires_at > now();
+    IF FOUND THEN
+      _tenant_id := _invitation.tenant_id;
+      _role := _invitation.role;
+    END IF;
+  END IF;
+
+  IF _tenant_id IS NULL THEN
+    -- Orphan user (no tenant) — allow auth to succeed; profile must be assigned later
+    RAISE WARNING 'handle_new_user: user % created without tenant_id', NEW.id;
+    RETURN NEW;
+  END IF;
+
+  -- Username: from metadata, fallback to email, fallback to UUID-derived
+  _username := COALESCE(
+    NULLIF(TRIM(NEW.raw_user_meta_data->>'username'), ''),
+    NULLIF(TRIM(NEW.email), ''),
+    'user_' || REPLACE(NEW.id::TEXT, '-', '')
+  );
+
+  IF EXISTS (SELECT 1 FROM public.profiles
+             WHERE tenant_id = _tenant_id AND username = _username) THEN
+    _username := _username || '_' || SUBSTR(REPLACE(NEW.id::TEXT, '-', ''), 1, 6);
+  END IF;
+
+  -- Role: from invitation > metadata > default 'staff'
+  IF _role IS NULL THEN
+    BEGIN
+      _role := COALESCE(
+        NULLIF(TRIM(NEW.raw_user_meta_data->>'role'), '')::user_role,
+        'staff'
+      );
+    EXCEPTION WHEN others THEN _role := 'staff';
+    END;
+  END IF;
+
+  INSERT INTO public.profiles (id, tenant_id, username, role)
+  VALUES (NEW.id, _tenant_id, _username, _role);
+
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'handle_new_user: failed for user % — %', NEW.id, SQLERRM;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- ─── Auto-create chat room when store is created ───
+CREATE OR REPLACE FUNCTION create_store_chat_room()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.chat_rooms (tenant_id, store_id, name, type)
+  VALUES (NEW.tenant_id, NEW.id, NEW.store_name || ' — แชท', 'store');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER trg_store_create_chat_room
+  AFTER INSERT ON stores
+  FOR EACH ROW EXECUTE FUNCTION create_store_chat_room();
+
+-- ─── Add user to store chat room when assigned ───
+CREATE OR REPLACE FUNCTION add_user_to_store_chat()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.chat_members (room_id, user_id, role)
+  SELECT cr.id, NEW.user_id, 'member'
+  FROM public.chat_rooms cr
+  WHERE cr.store_id = NEW.store_id
+    AND cr.type = 'store'
+    AND cr.is_active = true
+  ON CONFLICT (room_id, user_id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER trg_user_store_add_chat
+  AFTER INSERT ON user_stores
+  FOR EACH ROW EXECUTE FUNCTION add_user_to_store_chat();
+
+CREATE OR REPLACE FUNCTION remove_user_from_store_chat()
+RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM public.chat_members
+  WHERE user_id = OLD.user_id
+    AND room_id IN (
+      SELECT cr.id FROM public.chat_rooms cr
+      WHERE cr.store_id = OLD.store_id AND cr.type = 'store'
+    );
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER trg_user_store_remove_chat
+  AFTER DELETE ON user_stores
+  FOR EACH ROW EXECUTE FUNCTION remove_user_from_store_chat();
+
+-- ─── system_settings: auto-update updated_at ───
+CREATE OR REPLACE FUNCTION system_settings_touch_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER system_settings_updated_at
+  BEFORE UPDATE ON system_settings
+  FOR EACH ROW EXECUTE FUNCTION system_settings_touch_updated_at();
+
+-- ==========================================
+-- END OF PHASE E
 -- ==========================================
