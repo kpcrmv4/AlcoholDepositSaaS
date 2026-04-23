@@ -38,11 +38,21 @@ interface StoreInfo {
   id: string;
   store_code: string;
   store_name: string;
+  tenant_id: string;
   line_token: string;
   line_channel_secret: string | null;
   deposit_notify_group_id: string | null;
   bar_notify_group_id: string | null;
   stock_notify_group_id: string | null;
+}
+
+interface TenantInfo {
+  id: string;
+  slug: string;
+  line_mode: 'tenant' | 'per_store';
+  line_channel_id: string | null;
+  line_channel_secret: string | null;
+  line_channel_token: string | null;
 }
 
 type SupabaseClient = ReturnType<typeof createServiceClient>;
@@ -73,68 +83,143 @@ function verifySignature(
 // ---------------------------------------------------------------------------
 
 const STORE_SELECT =
-  'id, store_code, store_name, line_token, line_channel_secret, deposit_notify_group_id, bar_notify_group_id, stock_notify_group_id';
+  'id, store_code, store_name, tenant_id, line_token, line_channel_secret, ' +
+  'deposit_notify_group_id, bar_notify_group_id, stock_notify_group_id';
+
+/**
+ * Resolve the tenant that owns this webhook destination.
+ *
+ * Order:
+ *   1. tenants.line_channel_id = destination  (tenant-mode OA)
+ *   2. any store.line_channel_id = destination → its tenant (per-store mode)
+ *
+ * Returns null when no tenant or store owns this channel_id.
+ */
+async function resolveTenantByDestination(
+  supabase: SupabaseClient,
+  destination: string,
+): Promise<TenantInfo | null> {
+  if (!destination) return null;
+
+  // 1. Tenant-mode OA
+  const { data: t } = await supabase
+    .from('tenants')
+    .select('id, slug, line_mode, line_channel_id, line_channel_secret, line_channel_token')
+    .eq('line_channel_id', destination)
+    .maybeSingle();
+
+  if (t?.line_channel_secret) {
+    return t as TenantInfo;
+  }
+
+  // 2. Per-store OA — look up store, then its tenant
+  const { data: s } = await supabase
+    .from('stores')
+    .select('tenant_id, line_channel_id, line_channel_secret, line_token')
+    .eq('line_channel_id', destination)
+    .eq('active', true)
+    .maybeSingle();
+
+  if (s?.line_channel_secret && s.tenant_id) {
+    const { data: parent } = await supabase
+      .from('tenants')
+      .select('id, slug, line_mode, line_channel_id, line_channel_secret, line_channel_token')
+      .eq('id', s.tenant_id)
+      .maybeSingle();
+
+    if (parent) {
+      // Return a synthetic TenantInfo that uses the STORE's channel creds
+      // for signature verification but keeps the tenant's identity.
+      return {
+        id: parent.id,
+        slug: parent.slug,
+        line_mode: parent.line_mode,
+        line_channel_id: s.line_channel_id,
+        line_channel_secret: s.line_channel_secret,
+        line_channel_token: s.line_token,
+      };
+    }
+  }
+
+  return null;
+}
 
 async function resolveStore(
   supabase: SupabaseClient,
+  tenantId: string,
   destination: string,
   event: LineEvent,
 ): Promise<StoreInfo | null> {
-  // --- 1. จาก destination (channel_id ของ bot สาขา) ---
+  // --- 1. จาก destination (channel_id ของ bot สาขา — per-store mode) ---
   if (destination) {
     const { data: store } = await supabase
       .from('stores')
       .select(STORE_SELECT)
+      .eq('tenant_id', tenantId)
       .eq('line_channel_id', destination)
       .eq('active', true)
-      .single();
+      .maybeSingle();
 
     if (store?.line_token) return store as StoreInfo;
   }
 
-  // --- 2. จาก groupId (ข้อความส่งมาจากกลุ่ม LINE) ---
+  // --- 2. จาก groupId (ข้อความส่งมาจากกลุ่ม LINE — ต้องอยู่ในเทนแนนต์นี้) ---
   const groupId = event.source.groupId;
   if (groupId) {
-    // ค้นหาสาขาที่มี group ID นี้ในคอลัมน์ใดคอลัมน์หนึ่ง
     const { data: storeByGroup } = await supabase
       .from('stores')
       .select(STORE_SELECT)
+      .eq('tenant_id', tenantId)
       .eq('active', true)
       .or(
         `stock_notify_group_id.eq.${groupId},deposit_notify_group_id.eq.${groupId},bar_notify_group_id.eq.${groupId}`,
       )
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (storeByGroup) return storeByGroup as StoreInfo;
   }
 
-  // --- 3. จาก deposits ของลูกค้า (1-to-1 chat, single-bot mode) ---
+  // --- 3. จาก deposits ของลูกค้า (1-to-1 chat — ใน tenant นี้เท่านั้น) ---
   const userId = event.source.userId;
   if (userId && event.source.type === 'user') {
-    // หาสาขาที่ลูกค้ามี deposit ล่าสุด
     const { data: recentDeposit } = await supabase
       .from('deposits')
       .select('store_id')
+      .eq('tenant_id', tenantId)
       .eq('line_user_id', userId)
       .in('status', ['in_store', 'pending_confirm', 'pending_withdrawal'])
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (recentDeposit) {
       const { data: store } = await supabase
         .from('stores')
         .select(STORE_SELECT)
         .eq('id', recentDeposit.store_id)
+        .eq('tenant_id', tenantId)
         .eq('active', true)
-        .single();
+        .maybeSingle();
 
       if (store) return store as StoreInfo;
     }
   }
 
-  return null;
+  // --- 4. Tenant-mode fallback: return the first active store in tenant ---
+  // ถ้าหา store เฉพาะไม่เจอ แต่ tenant เป็น tenant-mode
+  // ให้ใช้สาขาแรก (is_central) หรือสาขาแรกที่ active เป็น default scope
+  const { data: defaultStore } = await supabase
+    .from('stores')
+    .select(STORE_SELECT)
+    .eq('tenant_id', tenantId)
+    .eq('active', true)
+    .order('is_central', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  return (defaultStore as StoreInfo | null) ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,11 +236,13 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceClient();
 
   // -----------------------------------------------------------------------
-  // 1. Verify webhook signature (ใช้ channel_secret ของสาขาเท่านั้น)
+  // 1. Resolve TENANT first from destination (channel_id).
   //
-  // Per-store model: the `destination` field is the channel_id of the store
-  // LINE OA that received the webhook. We look up the store by that id and
-  // verify using THAT store's secret. No env fallback.
+  // SaaS multi-tenant order:
+  //   (a) tenants.line_channel_id = destination  → tenant-mode OA
+  //   (b) stores.line_channel_id = destination   → per-store OA
+  //                                                  (store→tenant lookup)
+  // The signature is verified with the SECRET of whichever record matched.
   // -----------------------------------------------------------------------
   if (!destination) {
     return NextResponse.json(
@@ -164,27 +251,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { data: secretStore } = await supabase
-    .from('stores')
-    .select('line_channel_secret')
-    .eq('line_channel_id', destination)
-    .eq('active', true)
-    .single();
-
-  const channelSecret = secretStore?.line_channel_secret || '';
-
-  if (!channelSecret) {
+  const tenantInfo = await resolveTenantByDestination(supabase, destination);
+  if (!tenantInfo || !tenantInfo.line_channel_secret) {
     console.warn(
-      `[LINE] No store found for channel_id=${destination}. ` +
-        'ตั้งค่า Channel ID/Secret ใน ตั้งค่า → สาขา → [ชื่อสาขา] → LINE OA',
+      `[LINE] No tenant/store found for channel_id=${destination}. ` +
+        'Configure in Platform Admin → Tenant → LINE OA, or Store Settings → LINE OA.',
     );
     return NextResponse.json(
-      { error: 'Store not configured for this LINE channel' },
+      { error: 'Channel not provisioned to any tenant or store' },
       { status: 404 },
     );
   }
 
-  if (!verifySignature(body, signature, channelSecret)) {
+  if (!verifySignature(body, signature, tenantInfo.line_channel_secret)) {
     return NextResponse.json(
       { error: 'Invalid signature' },
       { status: 403 },
@@ -192,12 +271,24 @@ export async function POST(request: NextRequest) {
   }
 
   // -----------------------------------------------------------------------
-  // 2. Process events
+  // 2. Process events (scoped to tenantInfo.id)
   // -----------------------------------------------------------------------
   for (const event of parsed.events) {
     try {
-      // Resolve store สำหรับ event นี้
-      const storeInfo = await resolveStore(supabase, destination, event);
+      // Resolve store within THIS tenant for this event
+      const storeInfo = await resolveStore(
+        supabase,
+        tenantInfo.id,
+        destination,
+        event,
+      );
+
+      // For tenant-mode, if we still have no store, fall back to the
+      // tenant's own channel token for replies so the bot can at least
+      // respond with "ยังไม่ได้ลงทะเบียนสาขา" instead of being silent.
+      if (storeInfo && !storeInfo.line_token) {
+        storeInfo.line_token = tenantInfo.line_channel_token ?? storeInfo.line_token;
+      }
 
       if (event.type === 'message' && event.message?.type === 'text') {
         await handleTextMessage(supabase, event, storeInfo);
@@ -366,6 +457,7 @@ async function handleTextMessage(
     // Case 3: มี line_user_id = ผู้พิมพ์ → ผูกแล้ว แสดงข้อมูลเดิม
     if (deposit.line_user_id === userId) {
       const portalUrl = await buildCustomerEntryUrl({
+        tenantId: storeInfo?.tenant_id ?? "",
         lineUserId: userId,
         storeCode,
       });
@@ -453,6 +545,7 @@ async function handleTextMessage(
     const { count } = await countQuery;
 
     const entryUrl = await buildCustomerEntryUrl({
+        tenantId: storeInfo?.tenant_id ?? "",
       lineUserId: userId,
       storeCode: storeInfo?.store_code ?? null,
     });
@@ -474,6 +567,7 @@ async function handleTextMessage(
     ? `\n\n📍 สาขา: ${storeInfo.store_name}`
     : '';
   const portalLink = await buildCustomerEntryUrl({
+        tenantId: storeInfo?.tenant_id ?? "",
     lineUserId: userId,
     storeCode: storeInfo?.store_code ?? null,
   });
@@ -680,6 +774,7 @@ async function handlePostback(
     const storeName = storeRow?.store_name || '';
     const storeCode = storeRow?.store_code || storeInfo?.store_code || null;
     const portalUrl = await buildCustomerEntryUrl({
+        tenantId: storeInfo?.tenant_id ?? "",
       lineUserId: userId,
       storeCode,
     });
@@ -755,6 +850,7 @@ async function handlePostback(
     }
 
     const portalUrl = await buildCustomerEntryUrl({
+        tenantId: storeInfo?.tenant_id ?? "",
       lineUserId: userId,
       storeCode: resolvedStoreCode || storeInfo?.store_code || null,
     });
