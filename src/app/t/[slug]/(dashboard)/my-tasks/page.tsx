@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/auth-store';
+import { useTenantPath } from '@/lib/tenant';
 import { useAppStore } from '@/stores/app-store';
 import { useRealtime } from '@/hooks/use-realtime';
 import {
@@ -156,6 +157,7 @@ export default function MyTasksPage() {
   const { user } = useAuthStore();
   const { currentStoreId } = useAppStore();
   const today = formatThaiDate(new Date());
+  const tenantPath = useTenantPath();
 
   // Data state
   const [depositRequests, setDepositRequests] = useState<TableCardItem[]>([]);
@@ -632,7 +634,7 @@ export default function MyTasksPage() {
       {/* ── Quick Actions ───────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3">
         <a
-          href="/stock/daily-check"
+          href={tenantPath("/stock/daily-check")}
           className={cn(
             'flex flex-col items-center gap-2 rounded-xl px-3 py-4 text-white transition-all',
             'bg-gradient-to-r from-purple-500 to-indigo-600',
@@ -643,7 +645,7 @@ export default function MyTasksPage() {
           <span className="text-xs font-medium">{t('countStock')}</span>
         </a>
         <a
-          href="/deposit?action=new"
+          href={tenantPath("/deposit?action=new")}
           className={cn(
             'flex flex-col items-center gap-2 rounded-xl px-3 py-4 text-white transition-all',
             'bg-gradient-to-r from-teal-500 to-emerald-500',
@@ -654,7 +656,7 @@ export default function MyTasksPage() {
           <span className="text-xs font-medium">{t('newDeposit')}</span>
         </a>
         <a
-          href="/deposit?action=withdraw"
+          href={tenantPath("/deposit?action=withdraw")}
           className={cn(
             'flex flex-col items-center gap-2 rounded-xl px-3 py-4 text-white transition-all',
             'bg-gradient-to-r from-red-500 to-orange-500',

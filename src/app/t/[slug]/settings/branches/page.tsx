@@ -44,7 +44,7 @@ export default async function BranchesPage({ params }: Params) {
         <div>
           {canAdd ? (
             <Link
-              href="/settings/stores/new"
+              href={`/t/${slug}/settings/stores/new`}
               className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
             >
               + เพิ่มสาขา

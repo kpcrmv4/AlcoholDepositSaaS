@@ -19,7 +19,7 @@ import {
   RotateCcw,
   Settings,
 } from 'lucide-react';
-import Link from 'next/link';
+import { TenantLink as Link } from '@/lib/tenant/link';
 import { useTranslations } from 'next-intl';
 
 // ---------------------------------------------------------------------------

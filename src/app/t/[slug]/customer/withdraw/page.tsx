@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useTenantRouter } from '@/lib/tenant';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
 import { formatNumber } from '@/lib/utils/format';
@@ -25,7 +26,7 @@ interface BlockedDayInfo {
 
 function WithdrawContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
+  const router = useTenantRouter();
   const depositId = searchParams.get('depositId');
   const t = useTranslations('customer.withdraw');
 

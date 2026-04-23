@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useTenantRouter } from '@/lib/tenant';
 import { useTranslations } from 'next-intl';
 import {
   ArrowLeft,
@@ -18,7 +19,7 @@ const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
 function DepositContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
+  const router = useTenantRouter();
   const { lineUserId, displayName, mode, isLoading: authLoading, error: authError } = useCustomerAuth();
   const t = useTranslations('customer.deposit');
 

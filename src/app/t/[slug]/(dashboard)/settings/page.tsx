@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useTenantRouter } from '@/lib/tenant';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/auth-store';
@@ -27,7 +27,7 @@ interface StoreInfo {
 }
 
 export default function SettingsPage() {
-  const router = useRouter();
+  const router = useTenantRouter();
   const t = useTranslations('settings');
   const { user } = useAuthStore();
   const isOwner = user?.role === 'owner';

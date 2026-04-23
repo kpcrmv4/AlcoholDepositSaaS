@@ -45,7 +45,7 @@ import {
   Image as ImageIcon,
   X,
 } from 'lucide-react';
-import Link from 'next/link';
+import { TenantLink as Link } from '@/lib/tenant/link';
 import { useTranslations } from 'next-intl';
 import { DepositForm } from './_components/deposit-form';
 import { DepositDetail } from './_components/deposit-detail';

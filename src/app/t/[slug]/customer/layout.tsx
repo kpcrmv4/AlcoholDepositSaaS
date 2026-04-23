@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { TenantLink as Link } from '@/lib/tenant/link';
 import { useTranslations } from 'next-intl';
 import {
   Wine,

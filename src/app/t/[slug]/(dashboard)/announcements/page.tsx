@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useTenantRouter } from '@/lib/tenant';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils/cn';
 import { useAppStore } from '@/stores/app-store';
@@ -57,7 +57,7 @@ export default function AnnouncementsPage() {
     { id: 'active', label: t('tabActive') },
     { id: 'inactive', label: t('tabInactive') },
   ];
-  const router = useRouter();
+  const router = useTenantRouter();
   const { currentStoreId } = useAppStore();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [activeTab, setActiveTab] = useState('all');

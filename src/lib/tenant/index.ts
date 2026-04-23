@@ -28,3 +28,5 @@ export {
 
 export { TenantProvider, useTenant, useTenantMaybe } from './context';
 export { useTenantPath, useTenantSlug } from './use-tenant-path';
+export { useTenantRouter } from './use-tenant-router';
+export { TenantLink } from './link';

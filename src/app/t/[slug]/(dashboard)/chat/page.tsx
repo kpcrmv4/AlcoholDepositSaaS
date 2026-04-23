@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useTenantRouter } from '@/lib/tenant';
 import { useChatRooms } from '@/hooks/use-chat-rooms';
 import { useChatStore } from '@/stores/chat-store';
 import { useAuthStore } from '@/stores/auth-store';
@@ -14,7 +14,7 @@ import { formatThaiDate } from '@/lib/utils/format';
 import { PushPrompt } from '@/components/notification/push-prompt';
 
 export default function ChatPage() {
-  const router = useRouter();
+  const router = useTenantRouter();
   const { rooms } = useChatRooms();
   const { unreadCounts } = useChatStore();
   const { user } = useAuthStore();

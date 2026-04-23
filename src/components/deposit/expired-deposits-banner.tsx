@@ -4,12 +4,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAppStore } from '@/stores/app-store';
 import { cn } from '@/lib/utils/cn';
+import { useTenantPath } from '@/lib/tenant';
 import { AlertTriangle, ArrowRight, Truck } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 export function ExpiredDepositsBanner() {
   const t = useTranslations('deposit');
   const { currentStoreId } = useAppStore();
+  const tenantPath = useTenantPath();
   const [count, setCount] = useState<number | null>(null);
 
   const check = useCallback(async () => {
@@ -33,7 +35,7 @@ export function ExpiredDepositsBanner() {
 
   return (
     <a
-      href="/transfer"
+      href={tenantPath("/transfer")}
       className={cn(
         'flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors',
         'border-red-200 bg-red-50 hover:bg-red-100',

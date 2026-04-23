@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
+import { TenantLink as Link } from '@/lib/tenant/link';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils/cn';
 import { useAuthStore } from '@/stores/auth-store';

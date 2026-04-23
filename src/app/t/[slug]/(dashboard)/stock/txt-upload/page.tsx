@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils/cn';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAppStore } from '@/stores/app-store';
+import { useTenantPath } from '@/lib/tenant';
 import { Button, Badge, Card, CardHeader, CardContent, EmptyState, toast } from '@/components/ui';
 import { formatThaiDate, formatNumber } from '@/lib/utils/format';
 import { yesterdayBangkok } from '@/lib/utils/date';
@@ -431,6 +432,7 @@ export default function TxtUploadPage() {
   const { user } = useAuthStore();
   const { currentStoreId } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const tenantPath = useTenantPath();
 
   // Role guard — เฉพาะ owner/manager/accountant เท่านั้น
   if (user && !UPLOAD_ROLES.includes(user.role)) {
@@ -438,7 +440,7 @@ export default function TxtUploadPage() {
       <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
         <Upload className="h-10 w-10 text-gray-300 dark:text-gray-600" />
         <p className="text-sm text-gray-500 dark:text-gray-400">{t('txtUpload.noPermission')}</p>
-        <a href="/stock" className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t('txtUpload.backToStock')}</a>
+        <a href={tenantPath("/stock")} className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t('txtUpload.backToStock')}</a>
       </div>
     );
   }
@@ -1356,7 +1358,7 @@ export default function TxtUploadPage() {
 
         {/* Actions */}
         <div className="flex flex-col gap-3 sm:flex-row">
-          <a href="/stock/comparison" className="flex-1">
+          <a href={tenantPath("/stock/comparison")} className="flex-1">
             <Button
               variant="primary"
               size="lg"

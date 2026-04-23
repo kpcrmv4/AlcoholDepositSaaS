@@ -34,7 +34,7 @@ interface StoreOption {
 
 export default function EditAnnouncementPage() {
   const t = useTranslations('announcements');
-  const router = useRouter();
+  const router = useTenantRouter();
   const params = useParams();
   const id = params.id as string;
   const { user } = useAuthStore();

@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useTenantRouter } from '@/lib/tenant';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/auth-store';
 import {
@@ -28,7 +28,7 @@ import {
 
 export default function CreateStoreWizardPage() {
   const t = useTranslations('settings');
-  const router = useRouter();
+  const router = useTenantRouter();
   const { user } = useAuthStore();
 
   const steps = [

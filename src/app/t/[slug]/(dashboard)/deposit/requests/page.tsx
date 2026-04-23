@@ -29,7 +29,7 @@ import {
   ArrowLeft,
   Loader2,
 } from 'lucide-react';
-import Link from 'next/link';
+import { TenantLink as Link } from '@/lib/tenant/link';
 import { useTranslations } from 'next-intl';
 import { logAudit, AUDIT_ACTIONS } from '@/lib/audit';
 import { notifyStaff } from '@/lib/notifications/client';

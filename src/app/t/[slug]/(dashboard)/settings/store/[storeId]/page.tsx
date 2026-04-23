@@ -41,7 +41,7 @@ import {
   Check,
   Bot,
 } from 'lucide-react';
-import Link from 'next/link';
+import { TenantLink as Link } from '@/lib/tenant/link';
 import type { ReceiptSettings, PrintServerStatus, PrintServerWorkingHours } from '@/types/database';
 
 // ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ const settingsDefaults: StoreSettingsData = {
 
 export default function StoreDetailSettingsPage() {
   const t = useTranslations('settings');
-  const router = useRouter();
+  const router = useTenantRouter();
   const params = useParams();
 
   const dayLabels: Record<string, string> = {

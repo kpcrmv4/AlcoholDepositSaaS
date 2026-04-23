@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useTenantRouter } from '@/lib/tenant';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/auth-store';
 import {
@@ -26,7 +26,7 @@ interface StoreOption {
 
 export default function NewAnnouncementPage() {
   const t = useTranslations('announcements');
-  const router = useRouter();
+  const router = useTenantRouter();
   const { user } = useAuthStore();
   const [stores, setStores] = useState<StoreOption[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);

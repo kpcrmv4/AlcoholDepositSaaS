@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils/cn';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAppStore } from '@/stores/app-store';
+import { useTenantPath } from '@/lib/tenant';
 import {
   Button,
   Input,
@@ -50,6 +51,8 @@ const COUNT_ROLES = ['owner', 'accountant', 'manager', 'bar'];
 export default function DailyCheckPage() {
   const t = useTranslations('stock');
   const { user } = useAuthStore();
+  const { currentStoreId } = useAppStore();
+  const tenantPath = useTenantPath();
 
   // Role guard — เฉพาะ staff/bar/manager/owner
   if (user && !COUNT_ROLES.includes(user.role)) {
@@ -57,11 +60,10 @@ export default function DailyCheckPage() {
       <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
         <Package className="h-10 w-10 text-gray-300 dark:text-gray-600" />
         <p className="text-sm text-gray-500 dark:text-gray-400">{t('dailyCheck.noPermission')}</p>
-        <a href="/stock" className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t('dailyCheck.backToStock')}</a>
+        <a href={tenantPath("/stock")} className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t('dailyCheck.backToStock')}</a>
       </div>
     );
   }
-  const { currentStoreId } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);

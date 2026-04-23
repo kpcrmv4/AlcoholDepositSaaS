@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, use } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { TenantLink as Link } from '@/lib/tenant/link';
+import { useTenantRouter } from '@/lib/tenant';
 import { useTranslations } from 'next-intl';
 import {
   ArrowLeft,
@@ -39,7 +39,7 @@ export default function UserPermissionsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const router = useRouter();
+  const router = useTenantRouter();
   const t = useTranslations('permissions');
 
   const [data, setData] = useState<ApiResponse | null>(null);

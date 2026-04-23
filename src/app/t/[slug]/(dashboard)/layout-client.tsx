@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
+import { TenantLink as Link } from '@/lib/tenant/link';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth-store';
 import { useSessionRefresh } from '@/hooks/use-session-refresh';
