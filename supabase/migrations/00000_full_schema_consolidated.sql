@@ -525,5 +525,357 @@ CREATE TABLE borrow_items (
 );
 
 -- ==========================================
--- END OF PHASE B
+-- STORE SETTINGS — per-store config (1:1 with stores)
+-- ==========================================
+
+CREATE TABLE store_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
+  notify_time_daily TIME,
+  notify_days TEXT[],
+  diff_tolerance NUMERIC(5,2) DEFAULT 5,
+  staff_registration_code TEXT,
+  receipt_settings JSONB,
+
+  -- Customer notification prefs
+  customer_notify_expiry_enabled    BOOLEAN DEFAULT true,
+  customer_notify_expiry_days       INTEGER DEFAULT 7,
+  customer_notify_withdrawal_enabled BOOLEAN DEFAULT true,
+  customer_notify_deposit_enabled    BOOLEAN DEFAULT true,
+  customer_notify_promotion_enabled  BOOLEAN DEFAULT true,
+  customer_notify_channels           TEXT[] DEFAULT '{pwa,line}',
+
+  -- LINE notification toggles
+  line_notify_enabled    BOOLEAN DEFAULT true,
+  daily_reminder_enabled BOOLEAN DEFAULT true,
+  follow_up_enabled      BOOLEAN DEFAULT true,
+
+  -- Chat bot settings
+  chat_bot_deposit_enabled    BOOLEAN NOT NULL DEFAULT true,
+  chat_bot_withdrawal_enabled BOOLEAN NOT NULL DEFAULT true,
+  chat_bot_stock_enabled      BOOLEAN NOT NULL DEFAULT true,
+  chat_bot_borrow_enabled     BOOLEAN NOT NULL DEFAULT true,
+  chat_bot_transfer_enabled   BOOLEAN NOT NULL DEFAULT true,
+  chat_bot_timeout_deposit    INTEGER NOT NULL DEFAULT 15,
+  chat_bot_timeout_withdrawal INTEGER NOT NULL DEFAULT 15,
+  chat_bot_timeout_stock      INTEGER NOT NULL DEFAULT 60,
+  chat_bot_timeout_borrow     INTEGER NOT NULL DEFAULT 30,
+  chat_bot_timeout_transfer   INTEGER NOT NULL DEFAULT 120,
+  chat_bot_priority_deposit    TEXT NOT NULL DEFAULT 'normal',
+  chat_bot_priority_withdrawal TEXT NOT NULL DEFAULT 'normal',
+  chat_bot_priority_stock      TEXT NOT NULL DEFAULT 'normal',
+  chat_bot_priority_borrow     TEXT NOT NULL DEFAULT 'normal',
+  chat_bot_priority_transfer   TEXT NOT NULL DEFAULT 'normal',
+  chat_bot_daily_summary_enabled BOOLEAN NOT NULL DEFAULT true,
+
+  -- Print server
+  print_server_account_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  print_server_working_hours JSONB DEFAULT '{"enabled": true, "startHour": 12, "startMinute": 0, "endHour": 6, "endMinute": 0}'::jsonb,
+
+  -- Withdrawal
+  withdrawal_blocked_days TEXT[] DEFAULT '{Fri,Sat}'
+);
+
+-- ==========================================
+-- APP SETTINGS — platform-wide flags (platform_admin only)
+-- ==========================================
+
+CREATE TABLE app_settings (
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  type        TEXT DEFAULT 'string',
+  description TEXT
+);
+
+COMMENT ON TABLE app_settings IS
+  'Platform-level settings (feature flags, maintenance mode). NEVER tenant data.';
+
+-- ==========================================
+-- SYSTEM SETTINGS — per-tenant config (replaces global system_settings)
+-- ==========================================
+
+CREATE TABLE system_settings (
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  key         TEXT NOT NULL,
+  value       TEXT,
+  description TEXT,
+  updated_at  TIMESTAMPTZ DEFAULT now(),
+  updated_by  UUID REFERENCES profiles(id),
+  PRIMARY KEY (tenant_id, key)
+);
+
+COMMENT ON TABLE system_settings IS
+  'Per-tenant key-value settings (bot display name, webhook note, feature flags scoped to tenant).';
+
+-- ==========================================
+-- AUDIT LOGS — tenant-level audit trail
+-- ==========================================
+
+CREATE TABLE audit_logs (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id    UUID REFERENCES stores(id),
+  action_type TEXT NOT NULL,
+  table_name  TEXT,
+  record_id   TEXT,
+  old_value   JSONB,
+  new_value   JSONB,
+  changed_by  UUID REFERENCES profiles(id),
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- NOTIFICATIONS
+-- ==========================================
+
+CREATE TABLE notifications (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id    UUID REFERENCES profiles(id),
+  store_id   UUID REFERENCES stores(id),
+  title      TEXT NOT NULL,
+  body       TEXT,
+  type       TEXT,
+  read       BOOLEAN DEFAULT false,
+  data       JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- PENALTIES
+-- ==========================================
+
+CREATE TABLE penalties (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id    UUID REFERENCES stores(id),
+  staff_id    UUID REFERENCES profiles(id),
+  reason      TEXT,
+  amount      NUMERIC(10,2),
+  status      TEXT DEFAULT 'pending',
+  approved_by UUID REFERENCES profiles(id),
+  notes       TEXT,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- PUSH SUBSCRIPTIONS
+-- ==========================================
+
+CREATE TABLE push_subscriptions (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id      UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  subscription JSONB NOT NULL,
+  device_name  TEXT,
+  active       BOOLEAN DEFAULT true,
+  created_at   TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- NOTIFICATION PREFERENCES (per user)
+-- ==========================================
+
+CREATE TABLE notification_preferences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE UNIQUE,
+  pwa_enabled BOOLEAN DEFAULT true,
+  line_enabled BOOLEAN DEFAULT true,
+  notify_deposit_confirmed BOOLEAN DEFAULT true,
+  notify_withdrawal_completed BOOLEAN DEFAULT true,
+  notify_expiry_warning BOOLEAN DEFAULT true,
+  notify_promotions BOOLEAN DEFAULT true,
+  notify_stock_alert BOOLEAN DEFAULT true,
+  notify_approval_request BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- ANNOUNCEMENTS
+-- ==========================================
+
+CREATE TABLE announcements (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id        UUID REFERENCES stores(id),
+  title           TEXT NOT NULL,
+  body            TEXT,
+  image_url       TEXT,
+  type            TEXT DEFAULT 'promotion',
+  target_audience TEXT DEFAULT 'customer',
+  start_date      TIMESTAMPTZ DEFAULT now(),
+  end_date        TIMESTAMPTZ,
+  send_push       BOOLEAN DEFAULT false,
+  push_sent_at    TIMESTAMPTZ,
+  active          BOOLEAN DEFAULT true,
+  created_by      UUID REFERENCES profiles(id),
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- PRINT QUEUE + PRINT SERVER STATUS
+-- ==========================================
+
+CREATE TABLE print_queue (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id      UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  deposit_id    UUID REFERENCES deposits(id) ON DELETE SET NULL,
+  job_type      print_job_type NOT NULL DEFAULT 'receipt',
+  status        print_job_status NOT NULL DEFAULT 'pending',
+  copies        INTEGER DEFAULT 1,
+  payload       JSONB NOT NULL,
+  requested_by  UUID REFERENCES profiles(id),
+  printed_at    TIMESTAMPTZ,
+  error_message TEXT,
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE print_server_status (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id           UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
+  is_online          BOOLEAN DEFAULT false,
+  last_heartbeat     TIMESTAMPTZ,
+  server_version     TEXT,
+  printer_name       TEXT DEFAULT 'POS80',
+  printer_status     TEXT DEFAULT 'unknown',
+  hostname           TEXT,
+  jobs_printed_today INTEGER DEFAULT 0,
+  error_message      TEXT,
+  created_at         TIMESTAMPTZ DEFAULT now(),
+  updated_at         TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- COMMISSION MODULE
+-- ==========================================
+
+CREATE TABLE ae_profiles (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name              TEXT NOT NULL,
+  nickname          TEXT,
+  phone             TEXT,
+  bank_name         TEXT,
+  bank_account_no   TEXT,
+  bank_account_name TEXT,
+  notes             TEXT,
+  is_active         BOOLEAN NOT NULL DEFAULT true,
+  created_by        UUID REFERENCES profiles(id),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE ae_profiles IS
+  'Account Executives (ที่พาลูกค้ามาร้าน). Shared across all stores within a tenant.';
+
+CREATE TABLE commission_payments (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id       UUID NOT NULL REFERENCES stores(id),
+  ae_id          UUID REFERENCES ae_profiles(id),
+  staff_id       UUID REFERENCES profiles(id),
+  type           commission_type NOT NULL,
+  month          TEXT NOT NULL,                    -- YYYY-MM
+  total_entries  INTEGER NOT NULL DEFAULT 0,
+  total_amount   NUMERIC(12,2) NOT NULL DEFAULT 0,
+  slip_photo_url TEXT,
+  notes          TEXT,
+  status         TEXT NOT NULL DEFAULT 'paid'
+                 CHECK (status IN ('paid', 'cancelled')),
+  paid_by        UUID REFERENCES profiles(id),
+  paid_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  cancelled_by   UUID REFERENCES profiles(id),
+  cancelled_at   TIMESTAMPTZ,
+  cancel_reason  TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE commission_entries (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id          UUID NOT NULL REFERENCES stores(id),
+  type              commission_type NOT NULL,
+  ae_id             UUID REFERENCES ae_profiles(id),
+  staff_id          UUID REFERENCES profiles(id),
+
+  bill_date         DATE NOT NULL,
+  receipt_no        TEXT,
+  receipt_photo_url TEXT,
+  table_no          TEXT,
+
+  -- AE commission calculation
+  subtotal_amount   NUMERIC(12,2),
+  commission_rate   NUMERIC(5,4) NOT NULL DEFAULT 0.10,   -- 10%
+  tax_rate          NUMERIC(5,4) NOT NULL DEFAULT 0.03,   -- 3% withholding
+  commission_amount NUMERIC(12,2),
+  tax_amount        NUMERIC(12,2),
+  net_amount        NUMERIC(12,2) NOT NULL,
+
+  -- Bottle commission
+  bottle_count      INTEGER,
+  bottle_rate       NUMERIC(10,2) DEFAULT 500,
+
+  payment_id        UUID REFERENCES commission_payments(id),
+  notes             TEXT,
+  created_by        UUID REFERENCES profiles(id),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ==========================================
+-- CHAT TABLES
+-- ==========================================
+
+CREATE TABLE chat_rooms (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id       UUID REFERENCES stores(id) ON DELETE CASCADE,
+  name           TEXT NOT NULL,
+  type           chat_room_type NOT NULL DEFAULT 'store',
+  is_active      BOOLEAN DEFAULT true,
+  pinned_summary JSONB DEFAULT NULL,
+  avatar_url     TEXT DEFAULT NULL,
+  created_by     UUID REFERENCES profiles(id) DEFAULT NULL,
+  created_at     TIMESTAMPTZ DEFAULT now(),
+  updated_at     TIMESTAMPTZ DEFAULT now()
+);
+
+COMMENT ON COLUMN chat_rooms.type IS
+  '''cross_store'' = cross-store WITHIN A TENANT only. Cross-tenant rooms are forbidden.';
+
+CREATE TABLE chat_messages (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id     UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  sender_id   UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  type        chat_message_type NOT NULL DEFAULT 'text',
+  content     TEXT,
+  metadata    JSONB DEFAULT NULL,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  archived_at TIMESTAMPTZ DEFAULT NULL
+);
+
+CREATE TABLE chat_members (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id      UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  user_id      UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  role         chat_member_role NOT NULL DEFAULT 'member',
+  last_read_at TIMESTAMPTZ DEFAULT now(),
+  muted        BOOLEAN NOT NULL DEFAULT false,
+  joined_at    TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (room_id, user_id)
+);
+
+CREATE TABLE chat_pinned_messages (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id    UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  message_id UUID NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+  pinned_by  UUID NOT NULL REFERENCES profiles(id),
+  pinned_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (room_id, message_id)
+);
+
+-- ==========================================
+-- END OF PHASE C
 -- ==========================================
