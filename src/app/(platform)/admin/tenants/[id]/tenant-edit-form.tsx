@@ -79,8 +79,8 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
   }
 
   return (
-    <section className="rounded border border-slate-200 bg-white">
-      <div className="flex border-b border-slate-200">
+    <section className="rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+      <div className="flex border-b border-gray-200 dark:border-gray-800">
         {([
           ['plan', 'Plan & limits'],
           ['line', 'LINE OA'],
@@ -91,7 +91,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
             key={k}
             onClick={() => setTab(k)}
             className={`px-4 py-2 text-sm ${
-              tab === k ? 'border-b-2 border-slate-900 font-semibold' : 'text-slate-600'
+              tab === k ? 'border-b-2 border-gray-900 font-semibold' : 'text-gray-600'
             }`}
           >
             {label}
@@ -122,7 +122,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
             <Field label="Max branches" name="max_branches" type="number" defaultValue={tenant.max_branches} />
             <Field label="Max users" name="max_users" type="number" defaultValue={tenant.max_users} />
             <div className="col-span-2 flex justify-end">
-              <button disabled={saving} className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">
+              <button disabled={saving} className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save plan'}
               </button>
             </div>
@@ -156,7 +156,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
             <Field label="Channel secret" name="line_channel_secret" type="password" defaultValue={tenant.line_channel_secret ?? ''} />
             <Field label="Channel access token" name="line_channel_token" type="password" defaultValue={tenant.line_channel_token ?? ''} />
             <Field label="Owner group ID" name="line_owner_group_id" defaultValue={tenant.line_owner_group_id ?? ''} />
-            <div className="col-span-2 rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+            <div className="col-span-2 rounded border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-3 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
               <div><strong>Webhook URL:</strong> paste this into LINE Developer Console</div>
               <code className="mt-1 block font-mono">
                 {process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.example.com'}/api/line/webhook
@@ -166,12 +166,12 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
               <button
                 type="button"
                 onClick={verifyLine}
-                className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+                className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:bg-gray-950"
               >
                 🔍 Verify saved token
               </button>
               <span className="text-xs">{verifyResult}</span>
-              <button disabled={saving} className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">
+              <button disabled={saving} className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save LINE'}
               </button>
             </div>
@@ -193,7 +193,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
             <Field label="Brand color" name="brand_color" type="color" defaultValue={tenant.brand_color ?? '#0ea5e9'} />
             <Field label="Logo URL" name="logo_url" defaultValue={tenant.logo_url ?? ''} />
             <div className="col-span-2 flex justify-end">
-              <button disabled={saving} className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">
+              <button disabled={saving} className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save branding'}
               </button>
             </div>
@@ -217,7 +217,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
                 Suspend tenant
               </button>
             )}
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">
               Suspending a tenant blocks all user sessions and redirects to /suspended.
               Data is preserved and can be resumed at any time.
             </p>
@@ -232,8 +232,8 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
   const { label, ...rest } = props;
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
-      <input {...rest} className="w-full rounded border border-slate-200 px-3 py-2 text-sm" />
+      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500">{label}</span>
+      <input {...rest} className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm" />
     </label>
   );
 }
@@ -245,11 +245,11 @@ function Select({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500">{label}</span>
       <select
         name={name}
         defaultValue={defaultValue}
-        className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
+        className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
       >
         {options.map(([v, l]) => (
           <option key={v} value={v}>{l}</option>

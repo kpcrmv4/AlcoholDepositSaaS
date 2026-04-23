@@ -35,13 +35,13 @@ export default async function UsagePage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Usage</h1>
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
         Deposit counts are for the current month. Aggregate only — no row-level data.
       </p>
 
-      <div className="overflow-hidden rounded border border-slate-200 bg-white">
+      <div className="overflow-hidden rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left">
+          <thead className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-left">
             <tr>
               <th className="px-4 py-2 font-medium">Tenant</th>
               <th className="px-4 py-2 font-medium">Plan</th>
@@ -54,12 +54,12 @@ export default async function UsagePage() {
             {(tenants ?? []).map((t) => {
               const c = counts.get(t.id) ?? { b: 0, u: 0, d: 0 };
               return (
-                <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50">
+                <tr key={t.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:bg-gray-950">
                   <td className="px-4 py-2">
                     <Link href={`/admin/tenants/${t.id}`} className="font-medium hover:underline">
                       {t.company_name}
                     </Link>
-                    <div className="text-xs text-slate-400 font-mono">{t.slug}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 font-mono">{t.slug}</div>
                   </td>
                   <td className="px-4 py-2">{t.plan}</td>
                   <td className="px-4 py-2">

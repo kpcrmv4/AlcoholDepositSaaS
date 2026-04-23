@@ -39,10 +39,10 @@ export default async function TenantDetailPage({ params }: Params) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/admin/tenants" className="text-sm text-slate-500 hover:underline">
+        <Link href="/admin/tenants" className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:underline">
           ← Tenants
         </Link>
-        <span className="text-slate-400">/</span>
+        <span className="text-gray-400 dark:text-gray-500">/</span>
         <h1 className="text-2xl font-semibold">{tenant.company_name}</h1>
         <span
           className={`rounded px-2 py-0.5 text-xs font-medium ${
@@ -68,22 +68,22 @@ export default async function TenantDetailPage({ params }: Params) {
 
       <TenantEditForm tenant={tenant} />
 
-      <section className="rounded border border-slate-200 bg-white p-6">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Recent audit</h2>
+      <section className="rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
+        <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Recent audit</h2>
         <ul className="space-y-1 text-sm">
           {(audit ?? []).map((a) => (
-            <li key={a.id} className="flex justify-between gap-2 border-b border-slate-50 py-1.5 last:border-0">
+            <li key={a.id} className="flex justify-between gap-2 border-b border-gray-50 dark:border-gray-800 py-1.5 last:border-0">
               <span className="font-mono text-xs">{a.action}</span>
-              <span className="flex-1 truncate text-xs text-slate-600">
+              <span className="flex-1 truncate text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
                 {a.payload ? JSON.stringify(a.payload) : ''}
               </span>
-              <span className="whitespace-nowrap text-xs text-slate-400">
+              <span className="whitespace-nowrap text-xs text-gray-400 dark:text-gray-500">
                 {new Date(a.created_at).toLocaleString('en-GB')}
               </span>
             </li>
           ))}
           {(audit ?? []).length === 0 && (
-            <li className="text-xs text-slate-500">No audit entries yet.</li>
+            <li className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">No audit entries yet.</li>
           )}
         </ul>
       </section>
@@ -93,8 +93,8 @@ export default async function TenantDetailPage({ params }: Params) {
 
 function Stat({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="rounded border border-slate-200 bg-white p-3">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+    <div className="rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+      <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 dark:text-gray-500">{label}</div>
       <div className={`mt-1 ${mono ? 'font-mono text-xs' : 'text-base font-semibold'}`}>
         {value}
       </div>

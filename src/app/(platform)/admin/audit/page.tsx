@@ -30,9 +30,9 @@ export default async function AuditPage({
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Audit log</h1>
 
-      <div className="overflow-hidden rounded border border-slate-200 bg-white">
+      <div className="overflow-hidden rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left">
+          <thead className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-left">
             <tr>
               <th className="px-4 py-2 font-medium">Time</th>
               <th className="px-4 py-2 font-medium">Tenant</th>
@@ -43,26 +43,26 @@ export default async function AuditPage({
           </thead>
           <tbody>
             {(data ?? []).map((row: any) => (
-              <tr key={row.id} className="border-b border-slate-100">
-                <td className="px-4 py-2 text-xs text-slate-600 whitespace-nowrap">
+              <tr key={row.id} className="border-b border-gray-100 dark:border-gray-800">
+                <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500 whitespace-nowrap">
                   {new Date(row.created_at).toLocaleString('en-GB')}
                 </td>
                 <td className="px-4 py-2">
-                  {row.tenants?.company_name ?? <span className="text-slate-400">—</span>}
+                  {row.tenants?.company_name ?? <span className="text-gray-400 dark:text-gray-500">—</span>}
                   {row.tenants?.slug && (
-                    <div className="text-xs text-slate-400 font-mono">{row.tenants.slug}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 font-mono">{row.tenants.slug}</div>
                   )}
                 </td>
                 <td className="px-4 py-2 text-xs">
                   {row.platform_admins?.display_name ?? row.platform_admins?.email ?? '—'}
                 </td>
                 <td className="px-4 py-2">
-                  <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-mono">
+                  <span className="rounded bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs font-mono">
                     {row.action}
                   </span>
                 </td>
                 <td className="px-4 py-2">
-                  <pre className="whitespace-pre-wrap break-words text-xs text-slate-600">
+                  <pre className="whitespace-pre-wrap break-words text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
                     {row.payload ? JSON.stringify(row.payload, null, 2) : ''}
                   </pre>
                 </td>
@@ -70,7 +70,7 @@ export default async function AuditPage({
             ))}
             {(data ?? []).length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
                   No audit entries.
                 </td>
               </tr>

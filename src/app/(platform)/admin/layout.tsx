@@ -36,8 +36,8 @@ export default async function PlatformAdminLayout({
   const admin = await getPlatformAdminOrRedirect();
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
+    <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+      <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-6">
             <Link href="/admin/tenants" className="text-lg font-semibold">
@@ -48,16 +48,16 @@ export default async function PlatformAdminLayout({
                 <Link
                   key={n.href}
                   href={n.href}
-                  className="rounded px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                  className="rounded px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:bg-gray-800"
                 >
                   {n.label}
                 </Link>
               ))}
             </nav>
           </div>
-          <div className="text-sm text-slate-500">
+          <div className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
             {admin.display_name || admin.email}
-            <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs">
+            <span className="ml-2 rounded bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 text-xs">
               {admin.role}
             </span>
           </div>

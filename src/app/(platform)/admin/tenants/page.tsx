@@ -60,7 +60,7 @@ export default async function TenantsPage({
         <h1 className="text-2xl font-semibold">Tenants</h1>
         <Link
           href="/admin/tenants/new"
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
         >
           + New tenant
         </Link>
@@ -72,12 +72,12 @@ export default async function TenantsPage({
           name="q"
           defaultValue={q}
           placeholder="Search by slug, name, or email"
-          className="flex-1 rounded border border-slate-200 px-3 py-2 text-sm"
+          className="flex-1 rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
         />
         <select
           name="status"
           defaultValue={status}
-          className="rounded border border-slate-200 px-3 py-2 text-sm"
+          className="rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
         >
           <option value="">All statuses</option>
           <option value="trial">Trial</option>
@@ -87,15 +87,15 @@ export default async function TenantsPage({
         </select>
         <button
           type="submit"
-          className="rounded bg-slate-100 px-4 py-2 text-sm hover:bg-slate-200"
+          className="rounded bg-gray-100 dark:bg-gray-800 px-4 py-2 text-sm hover:bg-gray-200 dark:bg-gray-800"
         >
           Filter
         </button>
       </form>
 
-      <div className="overflow-hidden rounded border border-slate-200 bg-white">
+      <div className="overflow-hidden rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left">
+          <thead className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-left">
             <tr>
               <th className="px-4 py-2 font-medium">Company</th>
               <th className="px-4 py-2 font-medium">Slug</th>
@@ -109,34 +109,34 @@ export default async function TenantsPage({
             {(tenants ?? []).map((t) => (
               <tr
                 key={t.id}
-                className="border-b border-slate-100 hover:bg-slate-50"
+                className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:bg-gray-950"
               >
                 <td className="px-4 py-2">
                   <Link
                     href={`/admin/tenants/${t.id}`}
-                    className="font-medium text-slate-900 hover:underline"
+                    className="font-medium text-gray-900 dark:text-gray-100 hover:underline"
                   >
                     {t.company_name}
                   </Link>
-                  <div className="text-xs text-slate-500">{t.contact_email}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">{t.contact_email}</div>
                 </td>
-                <td className="px-4 py-2 font-mono text-xs text-slate-600">
+                <td className="px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
                   {t.slug}
                 </td>
                 <td className="px-4 py-2">
                   <span
                     className={`rounded px-2 py-0.5 text-xs font-medium ${
-                      STATUS_STYLES[t.status] ?? 'bg-slate-100 text-slate-700'
+                      STATUS_STYLES[t.status] ?? 'bg-gray-100 dark:bg-gray-800 text-gray-700'
                     }`}
                   >
                     {t.status}
                   </span>
                 </td>
-                <td className="px-4 py-2 text-slate-700">{t.plan}</td>
-                <td className="px-4 py-2 text-slate-700">
+                <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{t.plan}</td>
+                <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
                   {branchCounts.get(t.id) ?? 0} / {t.max_branches}
                 </td>
-                <td className="px-4 py-2 text-xs text-slate-500">
+                <td className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">
                   {new Date(t.created_at).toLocaleDateString('en-GB')}
                 </td>
               </tr>
@@ -145,7 +145,7 @@ export default async function TenantsPage({
               <tr>
                 <td
                   colSpan={6}
-                  className="px-4 py-8 text-center text-sm text-slate-500"
+                  className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500"
                 >
                   No tenants found.
                 </td>
