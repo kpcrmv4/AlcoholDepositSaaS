@@ -27,3 +27,4 @@ export {
 } from './guard';
 
 export { TenantProvider, useTenant, useTenantMaybe } from './context';
+export { useTenantPath, useTenantSlug } from './use-tenant-path';

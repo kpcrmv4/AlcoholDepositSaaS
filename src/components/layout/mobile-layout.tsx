@@ -32,6 +32,7 @@ import { getModuleColors } from '@/lib/utils/module-colors';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAppStore } from '@/stores/app-store';
 import { getAccessibleModules } from '@/lib/modules/registry';
+import { useTenantPath } from '@/lib/tenant';
 import { TopBar } from './top-bar';
 import { BottomNav } from './bottom-nav';
 import { StoreSwitcher } from './store-switcher';
@@ -73,6 +74,7 @@ export function MobileLayout({ children, stores }: MobileLayoutProps) {
   const t = useTranslations();
   const { user, logout } = useAuthStore();
   const { theme, toggleTheme } = useAppStore();
+  const tenantPath = useTenantPath();
 
   // เห็นโมดูลตาม role + permission ส่วนตัวที่ได้รับเพิ่ม
   const modules = useMemo(
@@ -150,7 +152,7 @@ export function MobileLayout({ children, stores }: MobileLayoutProps) {
         {/* Drawer Header */}
         <div className="flex h-14 items-center justify-between border-b border-gray-200 px-4 dark:border-gray-800">
           <Link
-            href="/overview"
+            href={tenantPath('/overview')}
             onClick={() => setDrawerOpen(false)}
             className="text-lg font-bold text-gray-900 dark:text-white"
           >
@@ -182,14 +184,15 @@ export function MobileLayout({ children, stores }: MobileLayoutProps) {
                 <ul className="space-y-0.5">
                   {group.items.map((mod) => {
                     const Icon = iconMap[mod.icon] ?? ClipboardCheck;
+                    const scopedHref = tenantPath(mod.href);
                     const isActive =
-                      pathname === mod.href || pathname.startsWith(mod.href + '/');
+                      pathname === scopedHref || pathname.startsWith(scopedHref + '/');
                     const colors = getModuleColors(mod.color);
 
                     return (
                       <li key={mod.id}>
                         <Link
-                          href={mod.href}
+                          href={scopedHref}
                           onClick={() => setDrawerOpen(false)}
                           className={cn(
                             'flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2',

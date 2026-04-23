@@ -51,6 +51,8 @@ export function invalidateTenantLiffIdCache(tenantId?: string): void {
 interface BuildCustomerEntryUrlParams {
   /** Tenant the customer belongs to (required). */
   tenantId: string;
+  /** Tenant slug (optional — used to build tenant-scoped fallback URL). */
+  tenantSlug?: string | null;
   /** LINE user id — required only for the tokenized fallback path. */
   lineUserId: string | null;
   /** Branch store_code, passed as ?store= for UI context. */
@@ -62,7 +64,7 @@ interface BuildCustomerEntryUrlParams {
 export async function buildCustomerEntryUrl(
   params: BuildCustomerEntryUrlParams,
 ): Promise<string> {
-  const { tenantId, lineUserId, storeCode, path = '' } = params;
+  const { tenantId, tenantSlug, lineUserId, storeCode, path = '' } = params;
   const liffId = await getTenantLiffId(tenantId);
 
   // --- Preferred path: LIFF deep link -------------------------------------
@@ -74,13 +76,17 @@ export async function buildCustomerEntryUrl(
     return `https://liff.line.me/${liffId}${subPath}${query ? `?${query}` : ''}`;
   }
 
-  // --- Fallback: tokenized /customer URL ----------------------------------
+  // --- Fallback: tokenized /t/{slug}/customer URL -------------------------
+  // If slug is provided, build the tenant-scoped URL directly; otherwise
+  // fall back to the legacy /customer path (middleware will redirect).
+  const customerBase = tenantSlug ? `/t/${tenantSlug}/customer` : '/customer';
+
   if (!lineUserId) {
     const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    return `${base}/customer${path || ''}`;
+    return `${base}${customerBase}${path || ''}`;
   }
 
-  const tokenUrl = generateCustomerUrl(lineUserId, `/customer${path || ''}`);
+  const tokenUrl = generateCustomerUrl(lineUserId, `${customerBase}${path || ''}`);
   if (!storeCode) return tokenUrl;
   return `${tokenUrl}&store=${encodeURIComponent(storeCode)}`;
 }

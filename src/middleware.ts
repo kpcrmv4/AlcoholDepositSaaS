@@ -11,10 +11,20 @@ const PUBLIC_ROUTES = [
   '/api/cron',
   '/api/chat/bot-message',
   '/api/public',
+  '/suspended',
 ];
 
-const CUSTOMER_ROUTES = ['/customer', '/t/'];   // /t/{slug}/customer is also allowed for customers
 const ADMIN_ROUTES = ['/admin', '/api/platform'];
+
+// Legacy (single-tenant) paths that should redirect to the tenant-scoped
+// equivalent. These are page routes only — APIs stay flat.
+const LEGACY_PAGE_ROOTS = [
+  '/overview', '/deposit', '/stock', '/bar-approval', '/borrow',
+  '/transfer', '/hq-warehouse', '/commission', '/performance', '/activity',
+  '/announcements', '/chat', '/my-tasks', '/notifications', '/profile',
+  '/reports', '/print-listener', '/store-overview', '/users', '/guide',
+  '/settings',
+];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'))) return true;
@@ -34,11 +44,12 @@ function isAdminPath(pathname: string): boolean {
   return ADMIN_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
 }
 
-function isCustomerPath(pathname: string): boolean {
-  if (pathname === '/customer' || pathname.startsWith('/customer/')) return true;
-  // /t/{slug}/customer/... is also a customer path
-  if (/^\/t\/[^/]+\/customer(?:\/|$)/.test(pathname)) return true;
-  return false;
+function isLegacyPagePath(pathname: string): boolean {
+  return LEGACY_PAGE_ROOTS.some((r) => pathname === r || pathname.startsWith(r + '/'));
+}
+
+function isCustomerLegacyPath(pathname: string): boolean {
+  return pathname === '/customer' || pathname.startsWith('/customer/');
 }
 
 export async function middleware(request: NextRequest) {
@@ -57,9 +68,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request: { headers: request.headers } });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
@@ -77,9 +86,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // ── Platform admin fast path ─────────────────────────────────────────
-  // Platform admins live in their own table (platform_admins). They bypass
-  // the normal tenant/profile flow and are only allowed on /admin/* paths.
+  // ── Platform admin fast path (/admin/*) ──────────────────────────────
   if (isAdminPath(pathname)) {
     const { data: platformAdmin } = await supabase
       .from('platform_admins')
@@ -96,8 +103,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // ── Resolve user's profile (tenant scoped) ───────────────────────────
-  // Read role from JWT app_metadata for speed; fallback to DB.
+  // ── Load user's profile ──────────────────────────────────────────────
   let role: string | null = (user.app_metadata?.role as string) || null;
   let tenantId: string | null = (user.app_metadata?.tenant_id as string) || null;
 
@@ -109,17 +115,14 @@ export async function middleware(request: NextRequest) {
       .maybeSingle();
 
     if (!profile) {
-      // Possibly a platform admin trying to access tenant pages — send home
-      const { data: platformAdmin } = await supabase
+      // Platform admin trying to visit tenant pages → send to admin
+      const { data: admin } = await supabase
         .from('platform_admins')
         .select('id')
         .eq('id', user.id)
         .eq('active', true)
         .maybeSingle();
-
-      if (platformAdmin) {
-        return NextResponse.redirect(new URL('/admin/tenants', request.url));
-      }
+      if (admin) return NextResponse.redirect(new URL('/admin/tenants', request.url));
       return NextResponse.redirect(new URL('/login', request.url));
     }
     role = profile.role;
@@ -130,43 +133,62 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login?error=no-tenant', request.url));
   }
 
-  // ── /t/{slug}/ path: verify slug matches user's tenant ───────────────
+  // Fetch tenant slug + status for routing
+  const { data: tenant } = await supabase
+    .from('tenants')
+    .select('id, slug, status')
+    .eq('id', tenantId)
+    .maybeSingle();
+
+  if (!tenant) {
+    return NextResponse.redirect(new URL('/login?error=tenant-not-found', request.url));
+  }
+  if (tenant.status === 'suspended' || tenant.status === 'cancelled') {
+    return NextResponse.redirect(new URL('/suspended', request.url));
+  }
+
+  const slug = tenant.slug;
+
+  // ── Legacy path redirect ─────────────────────────────────────────────
+  // /overview → /t/{slug}/overview, /customer → /t/{slug}/customer, etc.
+  if (isLegacyPagePath(pathname)) {
+    const newUrl = new URL(`/t/${slug}${pathname}`, request.url);
+    newUrl.search = request.nextUrl.search;
+    return NextResponse.redirect(newUrl);
+  }
+  if (isCustomerLegacyPath(pathname)) {
+    const newUrl = new URL(`/t/${slug}${pathname}`, request.url);
+    newUrl.search = request.nextUrl.search;
+    return NextResponse.redirect(newUrl);
+  }
+
+  // ── /t/{slug}/ validation ────────────────────────────────────────────
   const urlSlug = extractSlugFromPath(pathname);
   if (urlSlug) {
-    const { data: tenant } = await supabase
-      .from('tenants')
-      .select('id, slug, status')
-      .eq('slug', urlSlug)
-      .maybeSingle();
-
-    if (!tenant) {
-      return NextResponse.redirect(new URL('/login?error=tenant-not-found', request.url));
+    if (urlSlug !== slug) {
+      // User is on another tenant's URL — reject
+      return NextResponse.redirect(new URL(`/t/${slug}/overview`, request.url));
     }
-    if (tenant.id !== tenantId) {
-      return NextResponse.redirect(new URL('/login?error=tenant-mismatch', request.url));
-    }
-    if (tenant.status === 'suspended' || tenant.status === 'cancelled') {
-      return NextResponse.redirect(new URL('/suspended', request.url));
-    }
-
     response.headers.set('x-tenant-id', tenant.id);
-    response.headers.set('x-tenant-slug', tenant.slug);
+    response.headers.set('x-tenant-slug', slug);
   } else {
-    response.headers.set('x-tenant-id', tenantId);
+    response.headers.set('x-tenant-id', tenant.id);
   }
 
   response.headers.set('x-user-id', user.id);
   response.headers.set('x-user-role', role ?? 'staff');
 
-  // ── Role gating ──────────────────────────────────────────────────────
+  // ── Role gating: customer must stay in /customer ─────────────────────
   if (role === 'customer') {
-    if (!isCustomerPath(pathname)) {
-      return NextResponse.redirect(new URL('/customer', request.url));
+    const isCustomerScoped =
+      pathname === `/t/${slug}/customer` || pathname.startsWith(`/t/${slug}/customer/`);
+    if (!isCustomerScoped) {
+      return NextResponse.redirect(new URL(`/t/${slug}/customer`, request.url));
     }
   } else {
-    if (isCustomerPath(pathname) && pathname.startsWith('/customer')) {
-      // non-customer can still view /t/{slug}/customer in staff-preview mode
-      return NextResponse.redirect(new URL('/', request.url));
+    // Non-customer cannot access customer scope
+    if (pathname.startsWith(`/t/${slug}/customer`)) {
+      return NextResponse.redirect(new URL(`/t/${slug}/overview`, request.url));
     }
   }
 

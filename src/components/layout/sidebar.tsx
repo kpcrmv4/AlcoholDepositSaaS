@@ -35,6 +35,7 @@ import { getModuleColors } from '@/lib/utils/module-colors';
 import { useAppStore } from '@/stores/app-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { getAccessibleModules } from '@/lib/modules/registry';
+import { useTenantPath } from '@/lib/tenant';
 import { StoreSwitcher } from './store-switcher';
 import { LanguageSwitcher } from './language-switcher';
 import type { Store } from '@/types/database';
@@ -72,6 +73,7 @@ export function Sidebar({ stores }: SidebarProps) {
   const t = useTranslations();
   const { user, logout } = useAuthStore();
   const { sidebarOpen, toggleSidebar, theme, toggleTheme } = useAppStore();
+  const tenantPath = useTenantPath();
 
   // เห็นโมดูลตาม role + permission ส่วนตัวที่ได้รับเพิ่ม
   const modules = useMemo(
@@ -112,7 +114,7 @@ export function Sidebar({ stores }: SidebarProps) {
     >
       {/* โลโก้และชื่อแอป — คลิกกลับหน้า overview */}
       <Link
-        href="/overview"
+        href={tenantPath("/overview")}
         className={cn(
           'flex h-16 items-center border-b border-gray-200 px-4 dark:border-gray-800',
           'transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50',
@@ -148,15 +150,16 @@ export function Sidebar({ stores }: SidebarProps) {
             <ul className="space-y-0.5">
               {group.items.map((mod) => {
                 const Icon = iconMap[mod.icon] ?? ClipboardCheck;
+                const scopedHref = tenantPath(mod.href);
                 const isActive =
-                  pathname === mod.href || pathname.startsWith(mod.href + '/');
+                  pathname === scopedHref || pathname.startsWith(scopedHref + '/');
                 const colors = getModuleColors(mod.color);
                 const modName = t(mod.nameKey);
 
                 return (
                   <li key={mod.id}>
                     <Link
-                      href={mod.href}
+                      href={scopedHref}
                       title={collapsed ? modName : undefined}
                       className={cn(
                         'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium',

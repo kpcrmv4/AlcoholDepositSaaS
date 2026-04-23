@@ -18,6 +18,7 @@ import { useNotificationStore } from '@/stores/notification-store';
 import { useChatStore } from '@/stores/chat-store';
 import { getModuleColors } from '@/lib/utils/module-colors';
 import type { LucideIcon } from 'lucide-react';
+import { useTenantPath } from '@/lib/tenant';
 
 interface NavItem {
   labelKey: string;
@@ -57,6 +58,7 @@ export function BottomNav() {
   const { user } = useAuthStore();
   const { unreadCount } = useNotificationStore();
   const chatUnread = useChatStore((s) => s.totalUnread);
+  const tenantPath = useTenantPath();
 
   if (!user) return null;
 
@@ -79,8 +81,9 @@ export function BottomNav() {
       <ul className="flex items-end justify-around">
         {navItems.map((item, index) => {
           const isCenter = index === centerIndex;
+          const scopedHref = tenantPath(item.href);
           const isActive =
-            pathname === item.href || pathname.startsWith(item.href + '/');
+            pathname === scopedHref || pathname.startsWith(scopedHref + '/');
           const Icon = item.icon;
           const isNotification = item.href === '/notifications';
           const isChat = item.href === '/chat';
@@ -91,7 +94,7 @@ export function BottomNav() {
             return (
               <li key={item.href} className="flex-1">
                 <Link
-                  href={item.href}
+                  href={tenantPath(item.href)}
                   className="flex flex-col items-center pb-1.5"
                 >
                   <span
@@ -123,7 +126,7 @@ export function BottomNav() {
           return (
             <li key={item.href} className="flex-1">
               <Link
-                href={item.href}
+                href={tenantPath(item.href)}
                 className={cn(
                   'flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-2',
                   'transition-colors duration-150',
