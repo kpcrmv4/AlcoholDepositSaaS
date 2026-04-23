@@ -1,11 +1,15 @@
 # AlcoholDepositSaaS — SaaS Multi-Tenant Upgrade Plan
 
-> เอกสารนี้เป็น **planning document** สำหรับการยกระดับระบบ StockManager
+> เอกสารนี้เริ่มจาก **planning document** สำหรับการยกระดับระบบ StockManager
 > (single-tenant) ให้กลายเป็น **SaaS Multi-Tenant** เต็มรูปแบบ
 > โดยอ้างอิงและแก้ไข `supabase/migrations/00000_full_schema_consolidated.sql`
 > เป็น source of truth ของ schema ใหม่
 >
-> สถานะ: 🟡 **Planning / Design** — ยังไม่เริ่ม implement
+> สถานะ: 🟢 **Phase 1-5 implemented** — schema, backend plumbing, platform
+> admin UI, tenant routing under `/t/[slug]/`, LINE per-tenant routing
+> เสร็จและ push บน branch `claude/clone-stockmanager-repo-CDzym`. เหลือ
+> **Phase 6 (penetration test)** ที่ต้องรันบน DB จริง และ Phase 7 (billing)
+> เป็น optional.
 
 ---
 
@@ -1136,7 +1140,7 @@ src/app/
 
 ## 8. Phase Roadmap
 
-### Phase 0: Design & Agreement ✅ (เอกสารนี้)
+### Phase 0: Design & Agreement ✅ DONE
 > วิเคราะห์ + ออกแบบ — ไม่มีโค้ด
 
 - [x] 0.1 — วิเคราะห์ schema เดิม (00000)
@@ -1144,69 +1148,96 @@ src/app/
 - [x] 0.3 — วางแผน LINE routing ใหม่
 - [x] 0.4 — วางแผน RLS rewrite
 - [x] 0.5 — ร่าง CLAUDE.md (เอกสารนี้)
-- [ ] 0.6 — รีวิวกับทีม + approve ก่อนลงมือเฟส 1
+- [x] 0.6 — รีวิวกับเจ้าของ + อนุมัติให้เริ่ม implement
 
-### Phase 1: Schema Migration (ประมาณ 2-3 วัน)
+### Phase 1: Schema Migration ✅ DONE
 > Source of truth — DB schema
 
-- [ ] 1.1 — แก้ `00000_full_schema_consolidated.sql` ตามส่วน 6
-- [ ] 1.2 — เขียน `00023_saas_multitenant.sql` สำหรับ upgrade DB เดิม
-- [ ] 1.3 — เขียน seed script: default platform_admin + default tenant (dev only)
-- [ ] 1.4 — ทดสอบ fresh install + upgrade path ใน Supabase local
-- [ ] 1.5 — รัน `supabase db lint` + `pg_prove` tests
+- [x] 1.1 — Rewrite `00000_full_schema_consolidated.sql` (2355 lines, 7
+  sub-phases A-G: enums, tenant root, domain tables, indexes, helpers,
+  RLS, seeds). ลบ migrations 00001-00022 ทั้งหมด — เริ่มจาก 0
+- [x] 1.2 — ❌ ไม่เขียน `00023` แล้ว (เลือกล้าง slate ทั้งหมดแทน)
+- [x] 1.3 — Seed default tenant (`00000000-0000-0000-0000-000000000001`)
+  + super-admin bootstrap function ใน 00000 ท้ายไฟล์
+- [ ] 1.4 — ทดสอบ fresh install (ต้องรันบน Supabase project จริง)
+- [ ] 1.5 — รัน `supabase db lint` + `pg_prove` tests (deferred)
 
-### Phase 2: Backend Plumbing (ประมาณ 3-5 วัน)
+### Phase 2: Backend Plumbing ✅ DONE
 > Server-side abstraction
 
-- [ ] 2.1 — `src/lib/tenant/` context + resolve + guard
-- [ ] 2.2 — `src/lib/supabase/server.ts` — tenant-scoped client
-- [ ] 2.3 — `src/middleware.ts` — tenant resolution middleware
-- [ ] 2.4 — Refactor `src/lib/line/messaging.ts` → accept `tenantId`
-- [ ] 2.5 — Refactor `src/app/api/line/webhook/route.ts` → resolve tenant first
-- [ ] 2.6 — Update all API routes to use tenant-scoped client
-- [ ] 2.7 — Unit tests สำหรับ tenant isolation
+- [x] 2.1 — `src/lib/tenant/` context + resolve + guard + types
+  + `useTenantPath` + `useTenantRouter` + `<TenantLink>`
+- [x] 2.2 — `src/lib/supabase/server.ts` — comments + service-role hints
+- [x] 2.3 — `src/middleware.ts` — full tenant resolution + legacy redirect
+  + slug validation + role gating
+- [x] 2.4 — `src/lib/line/messaging.ts` — `getStoreLineConfig()` resolves
+  tenant first, then store, with `line_mode` precedence
+- [x] 2.5 — `src/app/api/line/webhook/route.ts` — `resolveTenantByDestination()`
+  before signature verify
+- [x] 2.6 — APIs in `src/app/api/tenant/*` and `src/app/api/platform/*`
+  use the new guards (`requireTenantContext`, `requirePlatformAdmin`)
+- [ ] 2.7 — Unit tests for tenant isolation (deferred — Phase 6)
 
-### Phase 3: Platform Admin UI (ประมาณ 3-4 วัน)
+### Phase 3: Platform Admin UI ✅ DONE
 > Super admin dashboard
 
-- [ ] 3.1 — `/admin/tenants` list + search + filter
-- [ ] 3.2 — `/admin/tenants/new` wizard (4 steps)
-- [ ] 3.3 — `/admin/tenants/[id]` edit — tabs (overview, plan, LINE, danger zone)
-- [ ] 3.4 — `/admin/tenants/[id]/suspend` + audit log
-- [ ] 3.5 — `/admin/audit` — audit log stream
-- [ ] 3.6 — `/admin/usage` — usage stats dashboard
-- [ ] 3.7 — Platform admin auth flow (separate from tenant auth)
+- [x] 3.1 — `/admin/tenants` list + search + filter (status, q)
+- [x] 3.2 — `/admin/tenants/new` wizard (single-page form, not 4-step
+  to keep it lean)
+- [x] 3.3 — `/admin/tenants/[id]` edit — tabbed (Plan, LINE, Branding,
+  Danger zone). Verify-LINE button calls `/v2/bot/info`.
+- [x] 3.4 — Suspend/Resume buttons + `tenant_audit_logs`
+- [x] 3.5 — `/admin/audit` — audit log stream with tenant + admin joins
+- [x] 3.6 — `/admin/usage` — branches used / max, users, deposits MTD
+- [x] 3.7 — Platform admin auth via `platform_admins` table; middleware
+  fast-path for `/admin/*`; auto-promote on signup of matching email
 
-### Phase 4: Tenant Routing & UI (ประมาณ 4-5 วัน)
+### Phase 4: Tenant Routing & UI ✅ DONE
 > Move app under /t/[slug]/
 
-- [ ] 4.1 — Move `(dashboard)` → `t/[slug]/(dashboard)`
-- [ ] 4.2 — Move `(auth)`, `customer` → `t/[slug]/*`
-- [ ] 4.3 — Root `/` → landing page หรือ redirect
-- [ ] 4.4 — `/t/{slug}/settings/company` — company info
-- [ ] 4.5 — `/t/{slug}/settings/line` — per-tenant LINE config + test
-- [ ] 4.6 — `/t/{slug}/settings/branches` — branch list with max limit UI
-- [ ] 4.7 — `/t/{slug}/settings/users` — invite via email (invitations)
-- [ ] 4.8 — Invitation acceptance page `/t/{slug}/invite/{token}`
+- [x] 4.1 — Moved `(dashboard)` → `src/app/t/[slug]/(dashboard)`
+- [x] 4.2 — Moved `customer` → `src/app/t/[slug]/customer`. `(auth)` is
+  intentionally left at root (login/register are pre-tenant)
+- [x] 4.3 — Root `/` redirects to `/t/{slug}/overview` (staff) /
+  `/t/{slug}/customer` (customer) / `/admin/tenants` (platform admin)
+- [x] 4.4 — `/t/{slug}/settings/company` — company info form
+- [x] 4.5 — `/t/{slug}/settings/line` — per-tenant LINE config + test
+  connection
+- [x] 4.6 — `/t/{slug}/settings/branches` — branch list with
+  "active/max" usage card + add-branch quota guard
+- [x] 4.7 — `/t/{slug}/settings/users` — invite via email; pending
+  invitation list with revoke
+- [x] 4.8 — Invitation acceptance page `/invite/[token]` (kept at root,
+  not under tenant slug, because user isn't bound to tenant yet)
+- [x] 4.9 — Bonus: `/t/{slug}/settings/features` — per-store module
+  toggle matrix
+- [x] 4.10 — Bonus: `/t/{slug}/settings/permissions` — per-tenant role ×
+  permission matrix
 
-### Phase 5: LINE Per-Tenant Integration (ประมาณ 2-3 วัน)
+### Phase 5: LINE Per-Tenant Integration ✅ DONE
 > Webhook + LIFF
 
-- [ ] 5.1 — Webhook resolver: tenant-first, then store
-- [ ] 5.2 — LIFF entry: `liff_id` per tenant
-- [ ] 5.3 — `tenants.line_mode='per_store'` override path
-- [ ] 5.4 — LINE OA verify endpoint (test connection)
-- [ ] 5.5 — Webhook health monitoring (last event received)
+- [x] 5.1 — Webhook resolver: tenant first (by `tenants.line_channel_id`),
+  then store (by `stores.line_channel_id` → tenant lookup)
+- [x] 5.2 — LIFF entry uses `tenants.liff_id`; per-tenant cache
+- [x] 5.3 — `line_mode='per_store'` override resolved in
+  `getStoreLineConfig`
+- [x] 5.4 — Verify endpoint at `/api/tenant/line/verify` and
+  `/api/platform/tenants/[id]/verify-line` (calls `/v2/bot/info`)
+- [ ] 5.5 — Webhook health monitoring dashboard (deferred — phase 6/7)
 
-### Phase 6: Data Isolation Audit (ประมาณ 2 วัน)
+### Phase 6: Data Isolation Audit ⏳ TODO (needs live DB)
 > Security hardening
 
 - [ ] 6.1 — Penetration test: cross-tenant data access
   - login as tenant A → query data ของ tenant B (ต้อง fail ทุกกรณี)
-- [ ] 6.2 — Realtime subscribe audit — filter ทุก channel
-- [ ] 6.3 — Storage path audit — upload/read ไม่ข้าม tenant
-- [ ] 6.4 — Impersonation audit log — platform_admin ทุก action log
-- [ ] 6.5 — Load test: RLS performance (tenant_id index hit rate)
+- [ ] 6.2 — Realtime subscribe audit — verify all `use-*-realtime.ts`
+  hooks pass `tenant_id=eq.{x}` filter
+- [ ] 6.3 — Storage path audit — verify upload paths follow
+  `{tenant_id}/{store_id}/...` pattern
+- [ ] 6.4 — Impersonation audit log — verify platform_admin actions
+  always insert into `tenant_audit_logs`
+- [ ] 6.5 — Load test: RLS performance with realistic tenant counts
 
 ### Phase 7: Billing & Usage (optional, เฟสหลัง)
 > สำหรับ production SaaS จริง
@@ -1322,7 +1353,105 @@ src/app/
 
 ---
 
-**Status**: 🟡 Planning complete — รอ approve ก่อน Phase 1
+**Status**: 🟢 Phases 1-5 implemented and pushed; Phase 6 pentest pending
+live DB; Phase 7 billing not started
 **Last updated**: 2026-04-23
 **Owner**: Platform Team
+
+---
+
+## 13. Implementation Notes (สิ่งที่ทำจริง vs แผน)
+
+ส่วนนี้บันทึกสิ่งที่ implement แตกต่างจากแผนเดิมเพื่อให้คนอ่านโค้ดเข้าใจ
+intent ที่อยู่เบื้องหลังการตัดสินใจ:
+
+### 13.1 Schema migration strategy
+
+**แผน**: เขียน 00023 migration เพื่ออัพเกรด DB เดิม
+**จริง**: เจ้าของตัดสินใจล้าง slate — ลบ migrations 00001-00022 ทั้งหมด
+แล้ว rewrite `00000_full_schema_consolidated.sql` (2355 บรรทัด, 7 sub-phases)
+เป็น single source of truth. ไม่มี data migration เพราะ greenfield.
+
+### 13.2 Super-admin bootstrap
+
+ใน `00000` ท้ายไฟล์มี `auto_promote_super_admin()` trigger ที่ promote
+ผู้ที่สมัครด้วย email ที่กำหนดไว้ (default `your@email.com` — **ต้องแก้ก่อน
+deploy production**) ให้เป็น `platform_admins.role='super_admin'`.
+
+### 13.3 Default tenant for dev
+
+`00000` seed `00000000-0000-0000-0000-000000000001` slug=`default`
+plan=enterprise max_branches=100 เพื่อให้ fresh install ใช้งานได้ทันที.
+ใน production ลบ INSERT นี้ออก แล้วสร้าง tenant ผ่าน Platform Admin UI
+
+### 13.4 Tenant URL strategy (hybrid)
+
+**แผน**: ย้ายทุกอย่างไปใต้ `/t/[slug]/*`
+**จริง**: ทำ hybrid:
+- ย้าย `(dashboard)` + `customer` ไปใต้ `/t/[slug]/`
+- เก็บ `(auth)`, `/admin/*`, `/invite/[token]`, `/suspended` ไว้ที่ root
+- Middleware redirect legacy paths (`/overview`, `/customer`, ฯลฯ) →
+  `/t/{slug}/...` เพื่อรองรับ bookmark + QR code เก่า
+
+### 13.5 Auto-prefixing helpers (แทน mass refactor)
+
+แทนที่จะแก้ทุก `<Link href="/x">` เป็น `<Link href={`/t/${slug}/x`}>`
+ทีละจุด เราสร้าง:
+- `<TenantLink>` ใน `src/lib/tenant/link.tsx` — drop-in แทน `next/link`
+- `useTenantRouter()` ใน `src/lib/tenant/use-tenant-router.ts` — drop-in
+  แทน `useRouter`
+- `useTenantPath()` hook สำหรับ plain `<a>` หรือ form action
+
+แล้ว swap import ทีเดียว — ไม่ต้องแก้ href ราย callsite. ผลลัพธ์: ลิงก์
+ภายใน tenant ไปตรง URL ทันที (ไม่ผ่าน middleware redirect).
+
+### 13.6 Per-tenant LINE config (default per-store)
+
+**แผน**: default `line_mode='tenant'` (1 OA ต่อบริษัท)
+**จริง**: default `line_mode='per_store'` ตามที่เจ้าของขอ — แต่ละสาขาตั้ง
+LINE OA ของตัวเองได้, มี tenant-level fallback เมื่อ store ยังไม่ตั้งค่า
+
+### 13.7 Per-store feature toggles + per-tenant role permissions (ใหม่)
+
+นอกจากแผนเดิม มี 2 ตารางเพิ่มเติมตามที่เจ้าของขอ:
+- `store_features (store_id, feature_key, enabled)` — เปิด/ปิดโมดูลต่อสาขา
+- `role_permissions (tenant_id, role, permission_key, enabled)` —
+  กำหนดสิทธิ์ของแต่ละ role ในระดับ tenant
+
+ทั้งสอง seed defaults อัตโนมัติเมื่อสร้าง tenant ใหม่ผ่าน trigger
+`trigger_seed_role_permissions`.
+
+### 13.8 Customer LIFF flow
+
+`CustomerProvider` รองรับ 2 mode auth:
+1. **LIFF** (จาก `liff.line.me/{tenant.liff_id}?store=CODE`) — ใช้ LIFF SDK
+2. **Token** (จาก Flex Message URL) — HMAC-signed customer-token
+
+หน้า customer ทั้ง 6 หน้า (page, deposit, withdraw, history, promotions,
+settings) อยู่ใต้ `/t/[slug]/customer/*` แล้ว — แสดง expiry date + วันที่
+เหลือพร้อม color warning.
+
+### 13.9 What's intentionally NOT done
+
+- **Data residency / DB-per-tenant** — ไม่จำเป็นใน MVP
+- **Cross-tenant sharing** — ห้ามโดย design
+- **White-label full** (DNS, SSL ต่อ tenant) — Phase หลัง
+- **Stripe / billing** — Phase 7 (rough plan ใน section 8 อยู่แล้ว)
+- **Webhook health monitor dashboard** — deferred
+- **pgTap unit tests** — deferred จนกว่า DB จริงจะพร้อม
+
+---
+
+## 14. Pre-Deploy Checklist (สำหรับ production จริง)
+
+- [ ] เปลี่ยน `your@email.com` ใน `00000` (2 จุด: seed function +
+  trigger) เป็น email จริงของ super admin
+- [ ] ลบ default tenant seed ใน `00000` (บรรทัด ~2290) ออก
+- [ ] ตั้ง `NEXT_PUBLIC_APP_URL` ให้เป็น production URL
+- [ ] ตั้ง `SUPABASE_SERVICE_ROLE_KEY` env var
+- [ ] รัน migration `00000` บน Supabase project ใหม่ (greenfield)
+- [ ] Sign up super admin email → ตรวจว่าเข้า `/admin/tenants` ได้
+- [ ] สร้าง tenant แรกผ่าน Platform Admin → ตั้ง LINE OA + LIFF
+- [ ] ทดสอบ webhook โดยส่ง test message จาก LINE OA
+- [ ] รัน penetration test (Phase 6.1) ก่อน expose ให้ลูกค้าจริง
 
