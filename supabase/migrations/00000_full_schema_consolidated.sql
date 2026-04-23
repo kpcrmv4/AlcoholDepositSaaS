@@ -2133,5 +2133,223 @@ CREATE POLICY "Chat admins unpin messages" ON chat_pinned_messages
   );
 
 -- ==========================================
--- END OF PHASE F
+-- REALTIME PUBLICATION — client must filter by tenant_id=eq.{x}
+-- ==========================================
+
+ALTER PUBLICATION supabase_realtime ADD TABLE deposits;
+ALTER PUBLICATION supabase_realtime ADD TABLE withdrawals;
+ALTER PUBLICATION supabase_realtime ADD TABLE comparisons;
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+ALTER PUBLICATION supabase_realtime ADD TABLE deposit_requests;
+ALTER PUBLICATION supabase_realtime ADD TABLE announcements;
+ALTER PUBLICATION supabase_realtime ADD TABLE print_queue;
+ALTER PUBLICATION supabase_realtime ADD TABLE print_server_status;
+ALTER PUBLICATION supabase_realtime ADD TABLE borrows;
+ALTER PUBLICATION supabase_realtime ADD TABLE manual_counts;
+
+-- ==========================================
+-- SUPABASE STORAGE — deposit-photos bucket
+-- Path convention: {tenant_id}/{store_id}/{deposit_id}/{filename}
+-- ==========================================
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('deposit-photos', 'deposit-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Upload: authenticated user can upload only to their own tenant's folder
+CREATE POLICY "Tenant users upload to own tenant folder"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'deposit-photos'
+    AND (storage.foldername(name))[1] = public.get_user_tenant_id()::text
+  );
+
+-- Read: keep public read for now (LINE Flex requires unauthenticated URLs)
+-- TODO: migrate to signed URLs once LINE send pipeline is updated
+CREATE POLICY "Public read deposit-photos (LINE compatibility)"
+  ON storage.objects FOR SELECT TO public
+  USING (bucket_id = 'deposit-photos');
+
+-- Delete: only tenant admins of owning tenant
+CREATE POLICY "Tenant admin deletes own tenant photos"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (
+    bucket_id = 'deposit-photos'
+    AND (storage.foldername(name))[1] = public.get_user_tenant_id()::text
+    AND public.is_tenant_admin()
+  );
+
+-- ==========================================
+-- SEED: default role_permissions per tenant
+-- ==========================================
+-- Seeds the starter permission matrix whenever a new tenant is created.
+-- Owner can later override via UI.
+
+CREATE OR REPLACE FUNCTION seed_role_permissions_for_tenant(p_tenant_id UUID)
+RETURNS void AS $$
+DECLARE
+  r RECORD;
+  v_rows TEXT[][] := ARRAY[
+    -- Owner: everything
+    ARRAY['owner', 'deposits.view'], ARRAY['owner', 'deposits.manage'],
+    ARRAY['owner', 'withdrawals.view'], ARRAY['owner', 'withdrawals.manage'],
+    ARRAY['owner', 'stock.view'], ARRAY['owner', 'stock.count'], ARRAY['owner', 'stock.approve'],
+    ARRAY['owner', 'transfer.view'], ARRAY['owner', 'transfer.manage'],
+    ARRAY['owner', 'borrow.view'], ARRAY['owner', 'borrow.manage'],
+    ARRAY['owner', 'hq.view'], ARRAY['owner', 'hq.manage'],
+    ARRAY['owner', 'commission.view'], ARRAY['owner', 'commission.manage'],
+    ARRAY['owner', 'reports.view'], ARRAY['owner', 'settings.manage'],
+    ARRAY['owner', 'users.invite'], ARRAY['owner', 'users.manage'],
+    ARRAY['owner', 'chat.use'], ARRAY['owner', 'chat.admin'],
+    ARRAY['owner', 'announcements.manage'], ARRAY['owner', 'penalties.manage'],
+
+    -- Accountant: reports, commission, deposits view
+    ARRAY['accountant', 'deposits.view'], ARRAY['accountant', 'withdrawals.view'],
+    ARRAY['accountant', 'stock.view'], ARRAY['accountant', 'reports.view'],
+    ARRAY['accountant', 'commission.view'], ARRAY['accountant', 'commission.manage'],
+    ARRAY['accountant', 'penalties.manage'], ARRAY['accountant', 'chat.use'],
+
+    -- Manager: store ops
+    ARRAY['manager', 'deposits.view'], ARRAY['manager', 'deposits.manage'],
+    ARRAY['manager', 'withdrawals.view'], ARRAY['manager', 'withdrawals.manage'],
+    ARRAY['manager', 'stock.view'], ARRAY['manager', 'stock.count'], ARRAY['manager', 'stock.approve'],
+    ARRAY['manager', 'transfer.view'], ARRAY['manager', 'transfer.manage'],
+    ARRAY['manager', 'borrow.view'], ARRAY['manager', 'borrow.manage'],
+    ARRAY['manager', 'reports.view'], ARRAY['manager', 'settings.manage'],
+    ARRAY['manager', 'chat.use'], ARRAY['manager', 'chat.admin'],
+
+    -- Bar: bar confirm + deposits
+    ARRAY['bar', 'deposits.view'], ARRAY['bar', 'deposits.manage'],
+    ARRAY['bar', 'withdrawals.view'], ARRAY['bar', 'withdrawals.manage'],
+    ARRAY['bar', 'stock.view'], ARRAY['bar', 'chat.use'],
+
+    -- Staff: basic ops
+    ARRAY['staff', 'deposits.view'], ARRAY['staff', 'deposits.manage'],
+    ARRAY['staff', 'withdrawals.view'], ARRAY['staff', 'stock.view'],
+    ARRAY['staff', 'stock.count'], ARRAY['staff', 'chat.use'],
+
+    -- HQ: central warehouse
+    ARRAY['hq', 'hq.view'], ARRAY['hq', 'hq.manage'],
+    ARRAY['hq', 'transfer.view'], ARRAY['hq', 'transfer.manage'],
+    ARRAY['hq', 'deposits.view'], ARRAY['hq', 'stock.view'],
+    ARRAY['hq', 'reports.view'], ARRAY['hq', 'chat.use'],
+
+    -- Customer: self-service
+    ARRAY['customer', 'deposits.view'], ARRAY['customer', 'withdrawals.view']
+  ];
+  v_row TEXT[];
+BEGIN
+  FOREACH v_row SLICE 1 IN ARRAY v_rows LOOP
+    INSERT INTO public.role_permissions (tenant_id, role, permission_key, enabled)
+    VALUES (p_tenant_id, v_row[1]::user_role, v_row[2], true)
+    ON CONFLICT (tenant_id, role, permission_key) DO NOTHING;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+-- Auto-seed on tenant creation
+CREATE OR REPLACE FUNCTION trigger_seed_role_permissions()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM public.seed_role_permissions_for_tenant(NEW.id);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER trg_tenants_seed_permissions
+  AFTER INSERT ON tenants
+  FOR EACH ROW EXECUTE FUNCTION trigger_seed_role_permissions();
+
+-- ==========================================
+-- SEED: default tenant for dev / legacy
+-- ==========================================
+-- In production, a platform admin will create tenants via UI.
+-- This default is included so a fresh install is immediately usable.
+
+INSERT INTO tenants (
+  id, slug, company_name, contact_email,
+  status, plan, max_branches, max_users,
+  line_mode, trial_ends_at
+) VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'default',
+  'Default Company',
+  'admin@example.com',
+  'active',
+  'enterprise',
+  100,
+  1000,
+  'per_store',
+  NULL
+) ON CONFLICT (id) DO NOTHING;
+
+-- Seed default app_settings (platform-level)
+INSERT INTO app_settings (key, value, type, description) VALUES
+  ('maintenance_mode', 'false', 'bool', 'Global maintenance mode flag'),
+  ('signup_enabled',   'true',  'bool', 'Allow new tenant signups (otherwise invitation-only)')
+ON CONFLICT (key) DO NOTHING;
+
+-- Seed default system_settings for the default tenant
+INSERT INTO system_settings (tenant_id, key, value, description) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'bot.display_name', 'DAVIS Ai', 'Display name of the tenant bot in UI'),
+  ('00000000-0000-0000-0000-000000000001', 'bot.webhook_note', '',         'Extra note shown on the LINE settings page')
+ON CONFLICT (tenant_id, key) DO NOTHING;
+
+-- ==========================================
+-- SEED: super-admin bootstrap
+-- ==========================================
+-- When a user signs up via Supabase Auth with this email, the
+-- handle_new_user trigger will detect raw_user_meta_data.is_platform_admin
+-- and provision them into platform_admins. As a backstop, this script
+-- also auto-promotes the user if they sign up WITHOUT the metadata flag.
+--
+-- ⚠️  CHANGE THIS EMAIL BEFORE DEPLOYING TO PRODUCTION.
+
+CREATE OR REPLACE FUNCTION bootstrap_super_admin_by_email(p_email TEXT)
+RETURNS void AS $$
+DECLARE
+  v_uid UUID;
+BEGIN
+  SELECT id INTO v_uid FROM auth.users WHERE email = p_email LIMIT 1;
+  IF v_uid IS NULL THEN
+    RAISE NOTICE 'bootstrap_super_admin: no auth user yet for %, will be promoted on first sign-up', p_email;
+    RETURN;
+  END IF;
+  INSERT INTO public.platform_admins (id, email, display_name, role, active)
+  VALUES (v_uid, p_email, 'Super Admin', 'super_admin', true)
+  ON CONFLICT (id) DO UPDATE SET role = 'super_admin', active = true;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Trigger that promotes matching sign-ups even if metadata flag is missing
+CREATE OR REPLACE FUNCTION auto_promote_super_admin()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_super_email TEXT := 'your@email.com';   -- ⚠️ CHANGE ME
+BEGIN
+  IF NEW.email = v_super_email THEN
+    INSERT INTO public.platform_admins (id, email, display_name, role, active)
+    VALUES (NEW.id, NEW.email, 'Super Admin', 'super_admin', true)
+    ON CONFLICT (id) DO UPDATE SET role = 'super_admin', active = true;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER on_auth_user_created_super_admin
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION auto_promote_super_admin();
+
+-- Try to promote now (no-op if user hasn't signed up yet)
+SELECT bootstrap_super_admin_by_email('your@email.com');
+
+-- ==========================================
+-- SEED: default tenant role_permissions
+-- Trigger above fires on INSERT; call explicitly for default tenant
+-- in case the trigger does not fire on conflict.
+-- ==========================================
+SELECT seed_role_permissions_for_tenant('00000000-0000-0000-0000-000000000001');
+
+-- ==========================================
+-- END OF SCHEMA (Phases A–G complete)
 -- ==========================================
