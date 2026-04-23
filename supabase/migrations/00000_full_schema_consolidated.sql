@@ -1549,5 +1549,589 @@ CREATE TRIGGER system_settings_updated_at
   FOR EACH ROW EXECUTE FUNCTION system_settings_touch_updated_at();
 
 -- ==========================================
--- END OF PHASE E
+-- ROW LEVEL SECURITY — enable on every table
+-- ==========================================
+
+ALTER TABLE tenants              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_admins      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_permissions     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stores               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_stores          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_invitations   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_audit_logs    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE store_features       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE role_permissions     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE manual_counts        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ocr_logs             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ocr_items            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comparisons          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deposits             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE withdrawals          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deposit_requests     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transfers            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hq_deposits          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE borrows              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE borrow_items         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE store_settings       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_settings      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE penalties            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE push_subscriptions   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notification_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE announcements        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE print_queue          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE print_server_status  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ae_profiles          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE commission_entries   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE commission_payments  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_rooms           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_members         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_pinned_messages ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================
+-- RLS POLICIES
+--
+-- Policy pattern (ALL tenant tables):
+--   Layer 1: tenant_id = get_user_tenant_id()      ← mandatory isolation
+--   Layer 2: store_id IN (get_user_store_ids())   ← scope (if applicable)
+--   Layer 3: is_tenant_admin() bypass             ← admin within tenant
+--
+-- Platform admins get explicit SELECT-only policies.
+-- ==========================================
+
+-- ========== tenants ==========
+CREATE POLICY "Tenant members see own tenant" ON tenants
+  FOR SELECT USING (id = get_user_tenant_id());
+CREATE POLICY "Platform admin sees all tenants" ON tenants
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Platform admin manages tenants" ON tenants
+  FOR ALL USING (is_platform_admin()) WITH CHECK (is_platform_admin());
+CREATE POLICY "Tenant owner updates own tenant" ON tenants
+  FOR UPDATE USING (id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (id = get_user_tenant_id());
+
+-- ========== platform_admins ==========
+CREATE POLICY "Platform admins see each other" ON platform_admins
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Super admin manages platform admins" ON platform_admins
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.platform_admins
+            WHERE id = (SELECT auth.uid()) AND role = 'super_admin' AND active = true)
+  );
+
+-- ========== profiles ==========
+CREATE POLICY "Users view own profile" ON profiles
+  FOR SELECT USING (id = (SELECT auth.uid()));
+CREATE POLICY "Tenant members view tenant profiles" ON profiles
+  FOR SELECT USING (tenant_id = get_user_tenant_id());
+CREATE POLICY "Platform admin views all profiles" ON profiles
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Owner manages tenant profiles" ON profiles
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== user_permissions ==========
+CREATE POLICY "Users see own permissions" ON user_permissions
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (user_id = (SELECT auth.uid()) OR is_tenant_admin())
+  );
+CREATE POLICY "Owner manages permissions" ON user_permissions
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== stores ==========
+CREATE POLICY "Tenant members see tenant stores" ON stores
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Platform admin sees all stores" ON stores
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Tenant owner manages stores" ON stores
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== user_stores ==========
+CREATE POLICY "Users see own store assignments" ON user_stores
+  FOR SELECT USING (
+    user_id = (SELECT auth.uid())
+    OR (store_id IN (SELECT id FROM public.stores WHERE tenant_id = get_user_tenant_id()) AND is_tenant_admin())
+  );
+CREATE POLICY "Owner manages store assignments" ON user_stores
+  FOR ALL USING (
+    get_user_role() = 'owner'
+    AND store_id IN (SELECT id FROM public.stores WHERE tenant_id = get_user_tenant_id())
+  );
+
+-- ========== tenant_invitations ==========
+CREATE POLICY "Tenant admins see invitations" ON tenant_invitations
+  FOR SELECT USING (tenant_id = get_user_tenant_id() AND is_tenant_admin());
+CREATE POLICY "Tenant owner manages invitations" ON tenant_invitations
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== tenant_audit_logs ==========
+CREATE POLICY "Platform admin sees tenant audit logs" ON tenant_audit_logs
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Platform admin writes tenant audit logs" ON tenant_audit_logs
+  FOR INSERT WITH CHECK (is_platform_admin());
+
+-- ========== store_features ==========
+CREATE POLICY "Tenant members see store features" ON store_features
+  FOR SELECT USING (
+    store_id IN (SELECT id FROM public.stores WHERE tenant_id = get_user_tenant_id())
+  );
+CREATE POLICY "Tenant owner manages store features" ON store_features
+  FOR ALL USING (
+    get_user_role() = 'owner'
+    AND store_id IN (SELECT id FROM public.stores WHERE tenant_id = get_user_tenant_id())
+  );
+
+-- ========== role_permissions ==========
+CREATE POLICY "Tenant members see role permissions" ON role_permissions
+  FOR SELECT USING (tenant_id = get_user_tenant_id());
+CREATE POLICY "Tenant owner manages role permissions" ON role_permissions
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== products ==========
+CREATE POLICY "Tenant staff see products" ON products
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage products" ON products
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== manual_counts ==========
+CREATE POLICY "Tenant staff see counts" ON manual_counts
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage counts" ON manual_counts
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== comparisons ==========
+CREATE POLICY "Tenant staff see comparisons" ON comparisons
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage comparisons" ON comparisons
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== ocr ==========
+CREATE POLICY "Tenant staff see ocr_logs" ON ocr_logs
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage ocr_logs" ON ocr_logs
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+CREATE POLICY "Tenant staff see ocr_items" ON ocr_items
+  FOR SELECT USING (
+    ocr_log_id IN (
+      SELECT id FROM public.ocr_logs
+      WHERE tenant_id = get_user_tenant_id()
+        AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+    )
+  );
+CREATE POLICY "Tenant staff manage ocr_items" ON ocr_items
+  FOR ALL USING (
+    ocr_log_id IN (
+      SELECT id FROM public.ocr_logs
+      WHERE tenant_id = get_user_tenant_id()
+        AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+    )
+  );
+
+-- ========== deposits ==========
+CREATE POLICY "Tenant staff see deposits" ON deposits
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant customer sees own deposits" ON deposits
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (
+      customer_id = (SELECT auth.uid())
+      OR line_user_id = (SELECT p.line_user_id FROM public.profiles p WHERE p.id = (SELECT auth.uid()))
+    )
+  );
+CREATE POLICY "Tenant staff manage deposits" ON deposits
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== withdrawals ==========
+CREATE POLICY "Tenant staff see withdrawals" ON withdrawals
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant customer sees own withdrawals" ON withdrawals
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND line_user_id = (SELECT p.line_user_id FROM public.profiles p WHERE p.id = (SELECT auth.uid()))
+  );
+CREATE POLICY "Tenant staff manage withdrawals" ON withdrawals
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== deposit_requests ==========
+CREATE POLICY "Tenant staff see deposit_requests" ON deposit_requests
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Authenticated insert deposit_requests" ON deposit_requests
+  FOR INSERT WITH CHECK (
+    (SELECT auth.uid()) IS NOT NULL
+    AND tenant_id = get_user_tenant_id()
+  );
+CREATE POLICY "Tenant staff update deposit_requests" ON deposit_requests
+  FOR UPDATE USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+
+-- ========== transfers ==========
+CREATE POLICY "Tenant staff see transfers" ON transfers
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (
+      from_store_id IN (SELECT get_user_store_ids())
+      OR to_store_id IN (SELECT get_user_store_ids())
+      OR is_tenant_admin()
+    )
+  );
+CREATE POLICY "Tenant staff manage transfers" ON transfers
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (
+      from_store_id IN (SELECT get_user_store_ids())
+      OR to_store_id IN (SELECT get_user_store_ids())
+      OR is_tenant_admin()
+    )
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== hq_deposits ==========
+CREATE POLICY "Tenant admin sees hq_deposits" ON hq_deposits
+  FOR SELECT USING (tenant_id = get_user_tenant_id() AND is_tenant_admin());
+CREATE POLICY "Tenant admin manages hq_deposits" ON hq_deposits
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND is_tenant_admin())
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== borrows ==========
+CREATE POLICY "Tenant staff see borrows" ON borrows
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (
+      from_store_id IN (SELECT get_user_store_ids())
+      OR to_store_id IN (SELECT get_user_store_ids())
+      OR is_tenant_admin()
+    )
+  );
+CREATE POLICY "Tenant staff manage borrows" ON borrows
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (
+      from_store_id IN (SELECT get_user_store_ids())
+      OR to_store_id IN (SELECT get_user_store_ids())
+      OR is_tenant_admin()
+    )
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== borrow_items ==========
+CREATE POLICY "Tenant staff see borrow_items" ON borrow_items
+  FOR SELECT USING (
+    borrow_id IN (
+      SELECT id FROM public.borrows
+      WHERE tenant_id = get_user_tenant_id()
+        AND (
+          from_store_id IN (SELECT get_user_store_ids())
+          OR to_store_id IN (SELECT get_user_store_ids())
+          OR is_tenant_admin()
+        )
+    )
+  );
+CREATE POLICY "Tenant staff manage borrow_items" ON borrow_items
+  FOR ALL USING (
+    borrow_id IN (
+      SELECT id FROM public.borrows
+      WHERE tenant_id = get_user_tenant_id()
+        AND (
+          from_store_id IN (SELECT get_user_store_ids())
+          OR to_store_id IN (SELECT get_user_store_ids())
+          OR is_tenant_admin()
+        )
+    )
+  );
+
+-- ========== store_settings ==========
+CREATE POLICY "Tenant staff see store_settings" ON store_settings
+  FOR SELECT USING (
+    store_id IN (
+      SELECT id FROM public.stores
+      WHERE tenant_id = get_user_tenant_id()
+        AND (id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+    )
+  );
+CREATE POLICY "Tenant owner/manager manages store_settings" ON store_settings
+  FOR ALL USING (
+    get_user_role() IN ('owner', 'manager')
+    AND store_id IN (SELECT id FROM public.stores WHERE tenant_id = get_user_tenant_id())
+  );
+
+-- ========== app_settings (platform admin only) ==========
+CREATE POLICY "Platform admin reads app_settings" ON app_settings
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Platform admin writes app_settings" ON app_settings
+  FOR ALL USING (is_platform_admin()) WITH CHECK (is_platform_admin());
+
+-- ========== system_settings (per tenant) ==========
+CREATE POLICY "Tenant members read system_settings" ON system_settings
+  FOR SELECT USING (tenant_id = get_user_tenant_id());
+CREATE POLICY "Tenant owner writes system_settings" ON system_settings
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== audit_logs ==========
+CREATE POLICY "Tenant admin sees audit_logs" ON audit_logs
+  FOR SELECT USING (tenant_id = get_user_tenant_id() AND is_tenant_admin());
+
+-- ========== notifications ==========
+CREATE POLICY "Users see own notifications" ON notifications
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id() AND user_id = (SELECT auth.uid())
+  );
+CREATE POLICY "Users update own notifications" ON notifications
+  FOR UPDATE USING (
+    tenant_id = get_user_tenant_id() AND user_id = (SELECT auth.uid())
+  );
+
+-- ========== penalties ==========
+CREATE POLICY "Tenant staff see penalties" ON penalties
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant admin manages penalties" ON penalties
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND is_tenant_admin())
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== push_subscriptions ==========
+CREATE POLICY "Users manage own subscriptions" ON push_subscriptions
+  FOR ALL USING (user_id = (SELECT auth.uid()));
+
+-- ========== notification_preferences ==========
+CREATE POLICY "Users manage own preferences" ON notification_preferences
+  FOR ALL USING (user_id = (SELECT auth.uid()));
+
+-- ========== announcements ==========
+CREATE POLICY "Tenant members see active announcements" ON announcements
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND active = true
+    AND start_date <= now()
+    AND (end_date IS NULL OR end_date >= now())
+  );
+CREATE POLICY "Tenant owner manages announcements" ON announcements
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== print_queue ==========
+CREATE POLICY "Tenant staff see print jobs" ON print_queue
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage print jobs" ON print_queue
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== print_server_status ==========
+CREATE POLICY "Tenant staff see print server status" ON print_server_status
+  FOR SELECT USING (
+    store_id IN (
+      SELECT id FROM public.stores
+      WHERE tenant_id = get_user_tenant_id()
+        AND (id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+    )
+  );
+CREATE POLICY "Tenant staff manage print server status" ON print_server_status
+  FOR ALL USING (
+    store_id IN (
+      SELECT id FROM public.stores
+      WHERE tenant_id = get_user_tenant_id()
+        AND (id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+    )
+  );
+
+-- ========== ae_profiles ==========
+CREATE POLICY "Tenant members see ae_profiles" ON ae_profiles
+  FOR SELECT USING (tenant_id = get_user_tenant_id());
+CREATE POLICY "Tenant admin manages ae_profiles" ON ae_profiles
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND is_tenant_admin())
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== commission_entries ==========
+CREATE POLICY "Tenant staff see commission_entries" ON commission_entries
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage commission_entries" ON commission_entries
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== commission_payments ==========
+CREATE POLICY "Tenant staff see commission_payments" ON commission_payments
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant admin manages commission_payments" ON commission_payments
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND is_tenant_admin())
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== chat_rooms ==========
+CREATE POLICY "Tenant members see chat rooms" ON chat_rooms
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (is_chat_member(id) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant users create chat rooms" ON chat_rooms
+  FOR INSERT WITH CHECK (
+    tenant_id = get_user_tenant_id() AND (SELECT auth.uid()) IS NOT NULL
+  );
+CREATE POLICY "Chat admins update rooms" ON chat_rooms
+  FOR UPDATE USING (
+    tenant_id = get_user_tenant_id()
+    AND EXISTS (
+      SELECT 1 FROM public.chat_members
+      WHERE chat_members.room_id = chat_rooms.id
+        AND chat_members.user_id = (SELECT auth.uid())
+        AND chat_members.role = 'admin'
+    )
+  ) WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== chat_messages ==========
+CREATE POLICY "Members see chat messages" ON chat_messages
+  FOR SELECT USING (
+    room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+    AND (is_chat_member(room_id) OR is_tenant_admin())
+  );
+CREATE POLICY "Members send chat messages" ON chat_messages
+  FOR INSERT WITH CHECK (
+    sender_id = (SELECT auth.uid())
+    AND is_chat_member(room_id)
+    AND room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+  );
+CREATE POLICY "Members update action cards" ON chat_messages
+  FOR UPDATE USING (type = 'action_card' AND is_chat_member(room_id));
+
+-- ========== chat_members ==========
+CREATE POLICY "Members see co-members" ON chat_members
+  FOR SELECT USING (
+    room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+    AND (is_chat_member(room_id) OR is_tenant_admin())
+  );
+CREATE POLICY "Members update own membership" ON chat_members
+  FOR UPDATE USING (user_id = (SELECT auth.uid()))
+  WITH CHECK (user_id = (SELECT auth.uid()));
+CREATE POLICY "Owner/manager manages chat members" ON chat_members
+  FOR ALL USING (
+    get_user_role() IN ('owner', 'manager')
+    AND room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+  );
+CREATE POLICY "Chat admins add members" ON chat_members
+  FOR INSERT WITH CHECK (
+    room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+    AND (
+      EXISTS (
+        SELECT 1 FROM public.chat_members cm
+        WHERE cm.room_id = chat_members.room_id
+          AND cm.user_id = (SELECT auth.uid())
+          AND cm.role = 'admin'
+      )
+      OR user_id = (SELECT auth.uid())
+    )
+  );
+CREATE POLICY "Chat admins remove members" ON chat_members
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM public.chat_members cm
+      WHERE cm.room_id = chat_members.room_id
+        AND cm.user_id = (SELECT auth.uid())
+        AND cm.role = 'admin'
+    )
+  );
+
+-- ========== chat_pinned_messages ==========
+CREATE POLICY "Members view pinned messages" ON chat_pinned_messages
+  FOR SELECT USING (
+    room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+    AND is_chat_member(room_id)
+  );
+CREATE POLICY "Chat admins pin messages" ON chat_pinned_messages
+  FOR INSERT WITH CHECK (
+    room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+    AND EXISTS (
+      SELECT 1 FROM public.chat_members
+      WHERE chat_members.room_id = chat_pinned_messages.room_id
+        AND chat_members.user_id = (SELECT auth.uid())
+        AND (chat_members.role = 'admin' OR get_user_role() IN ('owner', 'manager'))
+    )
+  );
+CREATE POLICY "Chat admins unpin messages" ON chat_pinned_messages
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM public.chat_members
+      WHERE chat_members.room_id = chat_pinned_messages.room_id
+        AND chat_members.user_id = (SELECT auth.uid())
+        AND (chat_members.role = 'admin' OR get_user_role() IN ('owner', 'manager'))
+    )
+  );
+
+-- ==========================================
+-- END OF PHASE F
 -- ==========================================
