@@ -877,5 +877,154 @@ CREATE TABLE chat_pinned_messages (
 );
 
 -- ==========================================
--- END OF PHASE C
+-- INDEXES
+-- ==========================================
+
+-- --- Tenant identity lookups ---
+CREATE INDEX idx_tenants_slug ON tenants(slug);
+CREATE INDEX idx_tenants_status ON tenants(status);
+CREATE INDEX idx_tenants_owner ON tenants(owner_user_id);
+CREATE INDEX idx_platform_admins_active ON platform_admins(active) WHERE active = true;
+CREATE INDEX idx_tenant_invitations_tenant ON tenant_invitations(tenant_id);
+CREATE INDEX idx_tenant_invitations_email ON tenant_invitations(email);
+CREATE INDEX idx_tenant_invitations_token ON tenant_invitations(token) WHERE accepted_at IS NULL;
+CREATE INDEX idx_tenant_audit_logs_tenant ON tenant_audit_logs(tenant_id, created_at DESC);
+CREATE INDEX idx_tenant_audit_logs_admin ON tenant_audit_logs(platform_admin_id);
+
+-- --- Tenant isolation (CRITICAL for RLS performance) ---
+CREATE INDEX idx_profiles_tenant ON profiles(tenant_id);
+CREATE INDEX idx_profiles_line_user_id ON profiles(line_user_id);
+CREATE INDEX idx_profiles_created_by ON profiles(created_by);
+
+CREATE INDEX idx_stores_tenant ON stores(tenant_id);
+CREATE INDEX idx_stores_manager ON stores(manager_id);
+
+CREATE INDEX idx_user_stores_store ON user_stores(store_id);
+CREATE INDEX idx_user_permissions_tenant ON user_permissions(tenant_id);
+CREATE INDEX idx_user_permissions_granted_by ON user_permissions(granted_by);
+
+-- --- Feature + role config ---
+CREATE INDEX idx_store_features_store ON store_features(store_id);
+CREATE INDEX idx_role_permissions_tenant_role ON role_permissions(tenant_id, role);
+
+-- --- Stock module ---
+CREATE INDEX idx_products_tenant ON products(tenant_id);
+CREATE INDEX idx_products_store_id ON products(store_id);
+CREATE INDEX idx_manual_counts_tenant ON manual_counts(tenant_id);
+CREATE INDEX idx_manual_counts_store_date ON manual_counts(store_id, count_date);
+CREATE INDEX idx_manual_counts_user ON manual_counts(user_id);
+CREATE INDEX idx_ocr_logs_tenant ON ocr_logs(tenant_id);
+CREATE INDEX idx_ocr_logs_store ON ocr_logs(store_id);
+CREATE INDEX idx_comparisons_tenant ON comparisons(tenant_id);
+CREATE INDEX idx_comparisons_store_id ON comparisons(store_id);
+CREATE INDEX idx_comparisons_status ON comparisons(status);
+CREATE INDEX idx_comparisons_approved_by ON comparisons(approved_by);
+CREATE INDEX idx_comparisons_explained_by ON comparisons(explained_by);
+
+-- --- Deposit module ---
+CREATE INDEX idx_deposits_tenant ON deposits(tenant_id);
+CREATE INDEX idx_deposits_tenant_status ON deposits(tenant_id, status);
+CREATE INDEX idx_deposits_store_id ON deposits(store_id);
+CREATE INDEX idx_deposits_store_status ON deposits(store_id, status);
+CREATE INDEX idx_deposits_customer_id ON deposits(customer_id);
+CREATE INDEX idx_deposits_line_user_id ON deposits(line_user_id);
+CREATE INDEX idx_deposits_status ON deposits(status);
+CREATE INDEX idx_deposits_expiry_date ON deposits(expiry_date);
+CREATE INDEX idx_deposits_received_by ON deposits(received_by);
+CREATE INDEX idx_deposits_is_vip ON deposits(is_vip) WHERE is_vip = true;
+CREATE INDEX idx_deposits_is_no_deposit ON deposits(is_no_deposit) WHERE is_no_deposit = true;
+
+CREATE INDEX idx_withdrawals_tenant ON withdrawals(tenant_id);
+CREATE INDEX idx_withdrawals_deposit_id ON withdrawals(deposit_id);
+CREATE INDEX idx_withdrawals_store_id ON withdrawals(store_id);
+
+CREATE INDEX idx_deposit_requests_tenant ON deposit_requests(tenant_id);
+CREATE INDEX idx_deposit_requests_store_status ON deposit_requests(store_id, status);
+
+-- --- Transfer / HQ module ---
+CREATE INDEX idx_transfers_tenant ON transfers(tenant_id);
+CREATE INDEX idx_transfers_from_store ON transfers(from_store_id);
+CREATE INDEX idx_transfers_to_store ON transfers(to_store_id);
+CREATE INDEX idx_transfers_deposit ON transfers(deposit_id);
+CREATE INDEX idx_transfers_confirmed_by ON transfers(confirmed_by);
+CREATE INDEX idx_transfers_requested_by ON transfers(requested_by);
+
+CREATE INDEX idx_hq_deposits_tenant ON hq_deposits(tenant_id);
+CREATE INDEX idx_hq_deposits_status ON hq_deposits(status);
+CREATE INDEX idx_hq_deposits_from_store ON hq_deposits(from_store_id);
+CREATE INDEX idx_hq_deposits_transfer ON hq_deposits(transfer_id);
+CREATE INDEX idx_hq_deposits_deposit ON hq_deposits(deposit_id);
+CREATE INDEX idx_hq_deposits_received_by ON hq_deposits(received_by);
+CREATE INDEX idx_hq_deposits_withdrawn_by ON hq_deposits(withdrawn_by);
+
+-- --- Borrow module ---
+CREATE INDEX idx_borrows_tenant ON borrows(tenant_id);
+CREATE INDEX idx_borrows_from_store ON borrows(from_store_id);
+CREATE INDEX idx_borrows_to_store ON borrows(to_store_id);
+CREATE INDEX idx_borrows_status ON borrows(status);
+CREATE INDEX idx_borrows_created_at ON borrows(created_at);
+CREATE INDEX idx_borrows_approved_by ON borrows(approved_by);
+CREATE INDEX idx_borrows_requested_by ON borrows(requested_by);
+CREATE INDEX idx_borrows_rejected_by ON borrows(rejected_by);
+CREATE INDEX idx_borrows_cancelled_by ON borrows(cancelled_by);
+CREATE INDEX idx_borrows_borrower_pos ON borrows(borrower_pos_confirmed_by);
+CREATE INDEX idx_borrows_lender_pos ON borrows(lender_pos_confirmed_by);
+CREATE INDEX idx_borrow_items_borrow ON borrow_items(borrow_id);
+
+-- --- Shared tables ---
+CREATE INDEX idx_notifications_tenant ON notifications(tenant_id);
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_notifications_read ON notifications(user_id, read);
+CREATE INDEX idx_notifications_store ON notifications(store_id);
+CREATE INDEX idx_audit_logs_tenant ON audit_logs(tenant_id);
+CREATE INDEX idx_audit_logs_store_id ON audit_logs(store_id);
+CREATE INDEX idx_audit_logs_changed_by ON audit_logs(changed_by);
+CREATE INDEX idx_penalties_tenant ON penalties(tenant_id);
+CREATE INDEX idx_penalties_store ON penalties(store_id);
+CREATE INDEX idx_penalties_staff ON penalties(staff_id);
+CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id);
+CREATE INDEX idx_announcements_tenant ON announcements(tenant_id);
+CREATE INDEX idx_announcements_store_id ON announcements(store_id);
+CREATE INDEX idx_announcements_active ON announcements(active, start_date, end_date);
+CREATE INDEX idx_announcements_created_by ON announcements(created_by);
+
+-- --- Print ---
+CREATE INDEX idx_print_queue_tenant ON print_queue(tenant_id);
+CREATE INDEX idx_print_queue_store_status ON print_queue(store_id, status);
+CREATE INDEX idx_print_queue_store_pending ON print_queue(store_id, created_at ASC) WHERE status = 'pending';
+CREATE INDEX idx_print_queue_created_at ON print_queue(created_at);
+CREATE INDEX idx_print_queue_deposit ON print_queue(deposit_id);
+CREATE INDEX idx_print_queue_requested_by ON print_queue(requested_by);
+CREATE INDEX idx_print_server_status_store ON print_server_status(store_id);
+
+-- --- Commission ---
+CREATE INDEX idx_ae_profiles_tenant ON ae_profiles(tenant_id);
+CREATE INDEX idx_ae_profiles_active ON ae_profiles(is_active);
+CREATE INDEX idx_commission_entries_tenant ON commission_entries(tenant_id);
+CREATE INDEX idx_commission_entries_store_id ON commission_entries(store_id);
+CREATE INDEX idx_commission_entries_ae_id ON commission_entries(ae_id);
+CREATE INDEX idx_commission_entries_bill_date ON commission_entries(bill_date);
+CREATE INDEX idx_commission_entries_type ON commission_entries(type);
+CREATE INDEX idx_commission_entries_store_date ON commission_entries(store_id, bill_date);
+CREATE INDEX idx_commission_entries_payment_id ON commission_entries(payment_id);
+CREATE INDEX idx_commission_payments_tenant ON commission_payments(tenant_id);
+CREATE INDEX idx_commission_payments_store_id ON commission_payments(store_id);
+CREATE INDEX idx_commission_payments_ae_id ON commission_payments(ae_id);
+CREATE INDEX idx_commission_payments_month ON commission_payments(month);
+CREATE INDEX idx_commission_payments_status ON commission_payments(status);
+
+-- --- Chat ---
+CREATE INDEX idx_chat_rooms_tenant ON chat_rooms(tenant_id);
+CREATE INDEX idx_chat_rooms_store ON chat_rooms(store_id) WHERE is_active = true;
+CREATE INDEX idx_chat_rooms_created_by ON chat_rooms(created_by);
+CREATE INDEX idx_chat_messages_room_created ON chat_messages(room_id, created_at DESC) WHERE archived_at IS NULL;
+CREATE INDEX idx_chat_messages_action_cards ON chat_messages((metadata->>'status')) WHERE type = 'action_card' AND archived_at IS NULL;
+CREATE INDEX idx_chat_messages_sender ON chat_messages(sender_id);
+CREATE INDEX idx_chat_members_user ON chat_members(user_id);
+CREATE INDEX idx_chat_pinned_room ON chat_pinned_messages(room_id, pinned_at DESC);
+CREATE INDEX idx_chat_pinned_messages_pinned_by ON chat_pinned_messages(pinned_by);
+CREATE INDEX idx_chat_pinned_messages_message ON chat_pinned_messages(message_id);
+
+-- ==========================================
+-- END OF PHASE D
 -- ==========================================
