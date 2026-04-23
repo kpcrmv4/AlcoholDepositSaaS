@@ -39,7 +39,7 @@ export default async function TenantDetailPage({ params }: Params) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/admin/tenants" className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:underline">
+        <Link href="/admin/tenants" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
           ← Tenants
         </Link>
         <span className="text-gray-400 dark:text-gray-500">/</span>
@@ -74,7 +74,7 @@ export default async function TenantDetailPage({ params }: Params) {
           {(audit ?? []).map((a) => (
             <li key={a.id} className="flex justify-between gap-2 border-b border-gray-50 dark:border-gray-800 py-1.5 last:border-0">
               <span className="font-mono text-xs">{a.action}</span>
-              <span className="flex-1 truncate text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+              <span className="flex-1 truncate text-xs text-gray-600 dark:text-gray-400">
                 {a.payload ? JSON.stringify(a.payload) : ''}
               </span>
               <span className="whitespace-nowrap text-xs text-gray-400 dark:text-gray-500">
@@ -83,7 +83,7 @@ export default async function TenantDetailPage({ params }: Params) {
             </li>
           ))}
           {(audit ?? []).length === 0 && (
-            <li className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">No audit entries yet.</li>
+            <li className="text-xs text-gray-500 dark:text-gray-400">No audit entries yet.</li>
           )}
         </ul>
       </section>
@@ -94,7 +94,7 @@ export default async function TenantDetailPage({ params }: Params) {
 function Stat({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
-      <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 dark:text-gray-500">{label}</div>
+      <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</div>
       <div className={`mt-1 ${mono ? 'font-mono text-xs' : 'text-base font-semibold'}`}>
         {value}
       </div>

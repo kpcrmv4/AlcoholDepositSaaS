@@ -35,7 +35,7 @@ export default async function UsagePage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Usage</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
         Deposit counts are for the current month. Aggregate only — no row-level data.
       </p>
 
@@ -54,7 +54,7 @@ export default async function UsagePage() {
             {(tenants ?? []).map((t) => {
               const c = counts.get(t.id) ?? { b: 0, u: 0, d: 0 };
               return (
-                <tr key={t.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:bg-gray-950">
+                <tr key={t.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="px-4 py-2">
                     <Link href={`/admin/tenants/${t.id}`} className="font-medium hover:underline">
                       {t.company_name}

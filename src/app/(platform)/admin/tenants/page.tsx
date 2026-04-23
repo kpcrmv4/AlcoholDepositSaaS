@@ -87,7 +87,7 @@ export default async function TenantsPage({
         </select>
         <button
           type="submit"
-          className="rounded bg-gray-100 dark:bg-gray-800 px-4 py-2 text-sm hover:bg-gray-200 dark:bg-gray-800"
+          className="rounded bg-gray-100 dark:bg-gray-800 px-4 py-2 text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
         >
           Filter
         </button>
@@ -109,7 +109,7 @@ export default async function TenantsPage({
             {(tenants ?? []).map((t) => (
               <tr
                 key={t.id}
-                className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:bg-gray-950"
+                className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
               >
                 <td className="px-4 py-2">
                   <Link
@@ -118,9 +118,9 @@ export default async function TenantsPage({
                   >
                     {t.company_name}
                   </Link>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">{t.contact_email}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">{t.contact_email}</div>
                 </td>
-                <td className="px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+                <td className="px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-400">
                   {t.slug}
                 </td>
                 <td className="px-4 py-2">
@@ -136,7 +136,7 @@ export default async function TenantsPage({
                 <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
                   {branchCounts.get(t.id) ?? 0} / {t.max_branches}
                 </td>
-                <td className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                <td className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
                   {new Date(t.created_at).toLocaleDateString('en-GB')}
                 </td>
               </tr>
@@ -145,7 +145,7 @@ export default async function TenantsPage({
               <tr>
                 <td
                   colSpan={6}
-                  className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500"
+                  className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
                 >
                   No tenants found.
                 </td>

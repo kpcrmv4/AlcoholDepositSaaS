@@ -48,14 +48,14 @@ export default async function PlatformAdminLayout({
                 <Link
                   key={n.href}
                   href={n.href}
-                  className="rounded px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:bg-gray-800"
+                  className="rounded px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                 >
                   {n.label}
                 </Link>
               ))}
             </nav>
           </div>
-          <div className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
+          <div className="text-sm text-gray-500 dark:text-gray-400">
             {admin.display_name || admin.email}
             <span className="ml-2 rounded bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 text-xs">
               {admin.role}

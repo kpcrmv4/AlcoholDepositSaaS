@@ -156,7 +156,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
             <Field label="Channel secret" name="line_channel_secret" type="password" defaultValue={tenant.line_channel_secret ?? ''} />
             <Field label="Channel access token" name="line_channel_token" type="password" defaultValue={tenant.line_channel_token ?? ''} />
             <Field label="Owner group ID" name="line_owner_group_id" defaultValue={tenant.line_owner_group_id ?? ''} />
-            <div className="col-span-2 rounded border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-3 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+            <div className="col-span-2 rounded border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-3 text-xs text-gray-600 dark:text-gray-400">
               <div><strong>Webhook URL:</strong> paste this into LINE Developer Console</div>
               <code className="mt-1 block font-mono">
                 {process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.example.com'}/api/line/webhook
@@ -166,7 +166,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
               <button
                 type="button"
                 onClick={verifyLine}
-                className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:bg-gray-950"
+                className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
               >
                 🔍 Verify saved token
               </button>
@@ -217,7 +217,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
                 Suspend tenant
               </button>
             )}
-            <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               Suspending a tenant blocks all user sessions and redirects to /suspended.
               Data is preserved and can be resumed at any time.
             </p>
@@ -232,7 +232,7 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
   const { label, ...rest } = props;
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{label}</span>
       <input {...rest} className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm" />
     </label>
   );
@@ -245,7 +245,7 @@ function Select({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{label}</span>
       <select
         name={name}
         defaultValue={defaultValue}

@@ -44,7 +44,7 @@ export default async function AuditPage({
           <tbody>
             {(data ?? []).map((row: any) => (
               <tr key={row.id} className="border-b border-gray-100 dark:border-gray-800">
-                <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500 whitespace-nowrap">
+                <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
                   {new Date(row.created_at).toLocaleString('en-GB')}
                 </td>
                 <td className="px-4 py-2">
@@ -62,7 +62,7 @@ export default async function AuditPage({
                   </span>
                 </td>
                 <td className="px-4 py-2">
-                  <pre className="whitespace-pre-wrap break-words text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+                  <pre className="whitespace-pre-wrap break-words text-xs text-gray-600 dark:text-gray-400">
                     {row.payload ? JSON.stringify(row.payload, null, 2) : ''}
                   </pre>
                 </td>
@@ -70,7 +70,7 @@ export default async function AuditPage({
             ))}
             {(data ?? []).length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                   No audit entries.
                 </td>
               </tr>

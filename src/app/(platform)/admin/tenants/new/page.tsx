@@ -93,7 +93,7 @@ export default function NewTenantPage() {
             { value: 'per_store', label: 'Per store (each branch has its own OA)' },
             { value: 'tenant', label: 'Tenant (single OA for all branches)' },
           ]} />
-          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
             Channel ID / secret / token are set from the tenant detail page after creation.
           </p>
         </section>
@@ -102,7 +102,7 @@ export default function NewTenantPage() {
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded px-4 py-2 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:bg-gray-800"
+            className="rounded px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             Cancel
           </button>
@@ -123,7 +123,7 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
   const { label, ...rest } = props;
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{label}</span>
       <input
         {...rest}
         className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
@@ -139,7 +139,7 @@ function Select({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{label}</span>
       <select
         name={name}
         defaultValue={defaultValue}
