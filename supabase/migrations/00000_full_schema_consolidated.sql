@@ -239,8 +239,291 @@ CREATE TABLE tenant_audit_logs (
 );
 
 -- ==========================================
--- END OF PHASE A
--- Next phases will append: feature toggles, role permissions,
--- domain tables (stock/deposit/withdrawal/transfer/borrow/HQ),
--- shared tables, commission, chat, indexes, RLS, triggers, seeds.
+-- STORE FEATURES — per-store module enable/disable
+-- ==========================================
+-- Each store can toggle which modules are active. Defaults to all enabled.
+-- Feature keys: 'stock', 'deposit', 'withdrawal', 'transfer', 'borrow',
+--               'hq_warehouse', 'commission', 'chat', 'print_server',
+--               'line_messaging', 'announcements', 'penalties'
+
+CREATE TABLE store_features (
+  store_id    UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  feature_key TEXT NOT NULL,
+  enabled     BOOLEAN NOT NULL DEFAULT true,
+  updated_at  TIMESTAMPTZ DEFAULT now(),
+  updated_by  UUID REFERENCES profiles(id),
+  PRIMARY KEY (store_id, feature_key)
+);
+
+COMMENT ON TABLE store_features IS
+  'Per-store module toggle. Absent row = default (usually enabled).';
+
+-- ==========================================
+-- ROLE PERMISSIONS — per-tenant role ↔ permission mapping
+-- ==========================================
+-- Each tenant can customize which permissions a role has access to.
+-- On tenant creation, default permission set is seeded (see Phase G).
+-- Permission keys use dotted notation: 'deposits.view', 'stock.manage', etc.
+
+CREATE TABLE role_permissions (
+  tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  role           user_role NOT NULL,
+  permission_key TEXT NOT NULL,
+  enabled        BOOLEAN NOT NULL DEFAULT true,
+  updated_at     TIMESTAMPTZ DEFAULT now(),
+  updated_by     UUID REFERENCES profiles(id),
+  PRIMARY KEY (tenant_id, role, permission_key)
+);
+
+COMMENT ON TABLE role_permissions IS
+  'Tenant-level override of role → permission mapping. Owner can toggle which menus/actions each role can access.';
+
+-- ==========================================
+-- STOCK MODULE
+-- ==========================================
+
+CREATE TABLE products (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id      UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  product_code  TEXT NOT NULL,
+  product_name  TEXT NOT NULL,
+  category      TEXT,
+  size          TEXT,
+  unit          TEXT,
+  price         NUMERIC(10,2),
+  active        BOOLEAN DEFAULT true,
+  count_status  TEXT NOT NULL DEFAULT 'active'
+                CHECK (count_status IN ('active', 'excluded')),
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (store_id, product_code)
+);
+
+CREATE TABLE manual_counts (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id       UUID NOT NULL REFERENCES stores(id),
+  count_date     DATE NOT NULL,
+  product_code   TEXT NOT NULL,
+  count_quantity NUMERIC(10,2) NOT NULL,
+  user_id        UUID REFERENCES profiles(id),
+  notes          TEXT,
+  verified       BOOLEAN DEFAULT false,
+  created_at     TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (store_id, count_date, product_code)
+);
+
+CREATE TABLE ocr_logs (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id        UUID NOT NULL REFERENCES stores(id),
+  upload_date     TIMESTAMPTZ DEFAULT now(),
+  count_items     INTEGER,
+  processed_items INTEGER,
+  status          TEXT DEFAULT 'pending',
+  upload_method   TEXT,
+  file_urls       TEXT[]
+);
+
+CREATE TABLE ocr_items (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ocr_log_id   UUID REFERENCES ocr_logs(id) ON DELETE CASCADE,
+  product_code TEXT,
+  product_name TEXT,
+  qty_ocr      NUMERIC(10,2),
+  unit         TEXT,
+  confidence   NUMERIC(5,2),
+  status       TEXT DEFAULT 'pending',
+  notes        TEXT
+);
+
+CREATE TABLE comparisons (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id        UUID NOT NULL REFERENCES stores(id),
+  comp_date       DATE NOT NULL,
+  product_code    TEXT NOT NULL,
+  product_name    TEXT,
+  pos_quantity    NUMERIC(10,2),
+  manual_quantity NUMERIC(10,2),
+  difference      NUMERIC(10,2),
+  diff_percent    NUMERIC(5,2),
+  status          comparison_status DEFAULT 'pending',
+  explanation     TEXT,
+  explained_by    UUID REFERENCES profiles(id),
+  approved_by     UUID REFERENCES profiles(id),
+  approval_status TEXT,
+  owner_notes     TEXT,
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- DEPOSIT MODULE
+-- ==========================================
+
+CREATE TABLE deposits (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id            UUID NOT NULL REFERENCES stores(id),
+  deposit_code        TEXT NOT NULL,
+  customer_id         UUID REFERENCES profiles(id),
+  line_user_id        TEXT,
+  customer_name       TEXT NOT NULL,
+  customer_phone      TEXT,
+  product_name        TEXT NOT NULL,
+  category            TEXT,
+  quantity            NUMERIC(10,2) NOT NULL,
+  remaining_qty       NUMERIC(10,2) NOT NULL,
+  remaining_percent   NUMERIC(5,2) DEFAULT 100,
+  table_number        TEXT,
+  status              deposit_status DEFAULT 'pending_confirm',
+  expiry_date         TIMESTAMPTZ,
+  received_by         UUID REFERENCES profiles(id),
+  notes               TEXT,
+  photo_url           TEXT,         -- legacy main photo
+  customer_photo_url  TEXT,         -- customer submitted (via LIFF)
+  received_photo_url  TEXT,         -- staff received
+  confirm_photo_url   TEXT,         -- bar confirmed
+  is_vip              BOOLEAN DEFAULT false,  -- VIP = no expiry
+  is_no_deposit       BOOLEAN DEFAULT false,  -- created as expired for HQ transfer
+  created_at          TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (tenant_id, deposit_code)
+);
+
+CREATE TABLE withdrawals (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  deposit_id      UUID REFERENCES deposits(id),
+  store_id        UUID NOT NULL REFERENCES stores(id),
+  line_user_id    TEXT,
+  customer_name   TEXT,
+  product_name    TEXT,
+  requested_qty   NUMERIC(10,2),
+  actual_qty      NUMERIC(10,2),
+  table_number    TEXT,
+  status          withdrawal_status DEFAULT 'pending',
+  processed_by    UUID REFERENCES profiles(id),
+  notes           TEXT,
+  photo_url       TEXT,
+  withdrawal_type TEXT DEFAULT 'in_store',
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE deposit_requests (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id          UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id           UUID NOT NULL REFERENCES stores(id),
+  line_user_id       TEXT NOT NULL,
+  customer_name      TEXT,
+  customer_phone     TEXT,
+  product_name       TEXT,
+  quantity           NUMERIC(10,2),
+  table_number       TEXT,
+  customer_photo_url TEXT,
+  notes              TEXT,
+  status             TEXT DEFAULT 'pending',
+  created_at         TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- TRANSFER MODULE (between stores WITHIN a tenant)
+-- ==========================================
+
+CREATE TABLE transfers (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id          UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  from_store_id      UUID NOT NULL REFERENCES stores(id),
+  to_store_id        UUID NOT NULL REFERENCES stores(id),
+  deposit_id         UUID REFERENCES deposits(id),
+  product_name       TEXT,
+  quantity           NUMERIC(10,2),
+  status             transfer_status DEFAULT 'pending',
+  requested_by       UUID REFERENCES profiles(id),
+  confirmed_by       UUID REFERENCES profiles(id),
+  notes              TEXT,
+  photo_url          TEXT,
+  confirm_photo_url  TEXT,
+  created_at         TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE hq_deposits (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  transfer_id         UUID REFERENCES transfers(id),
+  deposit_id          UUID REFERENCES deposits(id),
+  from_store_id       UUID REFERENCES stores(id),
+  product_name        TEXT,
+  customer_name       TEXT,
+  deposit_code        TEXT,
+  category            TEXT,
+  quantity            NUMERIC(10,2),
+  status              hq_deposit_status DEFAULT 'awaiting_withdrawal',
+  received_by         UUID REFERENCES profiles(id),
+  received_photo_url  TEXT,
+  received_at         TIMESTAMPTZ DEFAULT now(),
+  withdrawn_by        UUID REFERENCES profiles(id),
+  withdrawal_notes    TEXT,
+  withdrawn_at        TIMESTAMPTZ,
+  notes               TEXT,
+  created_at          TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- BORROW MODULE (between stores WITHIN a tenant)
+-- ==========================================
+
+CREATE TABLE borrows (
+  id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  borrow_code              TEXT,                    -- BRW-{FROM}-{TO}-XXXXX
+  from_store_id            UUID NOT NULL REFERENCES stores(id),
+  to_store_id              UUID NOT NULL REFERENCES stores(id),
+  requested_by             UUID REFERENCES profiles(id),
+  status                   borrow_status DEFAULT 'pending_approval',
+  notes                    TEXT,
+  borrower_photo_url       TEXT,
+  lender_photo_url         TEXT,
+  approved_by              UUID REFERENCES profiles(id),
+  approved_at              TIMESTAMPTZ,
+  borrower_pos_confirmed   BOOLEAN DEFAULT false,
+  lender_pos_confirmed     BOOLEAN DEFAULT false,
+  borrower_pos_confirmed_by UUID REFERENCES profiles(id),
+  borrower_pos_confirmed_at TIMESTAMPTZ,
+  lender_pos_confirmed_by  UUID REFERENCES profiles(id),
+  lender_pos_confirmed_at  TIMESTAMPTZ,
+  rejected_by              UUID REFERENCES profiles(id),
+  rejected_at              TIMESTAMPTZ,
+  rejection_reason         TEXT,
+  cancelled_by             UUID REFERENCES profiles(id),
+  cancelled_at             TIMESTAMPTZ,
+  borrower_pos_bill_url    TEXT,
+  lender_pos_bill_url      TEXT,
+  completed_at             TIMESTAMPTZ,
+  -- Borrower return confirmation (status 'return_pending')
+  return_photo_url         TEXT,
+  return_confirmed_by      UUID REFERENCES profiles(id),
+  return_confirmed_at      TIMESTAMPTZ,
+  return_notes             TEXT,
+  -- Lender return-receipt confirmation (status 'returned')
+  return_receipt_photo_url TEXT,
+  return_received_by       UUID REFERENCES profiles(id),
+  return_received_at       TIMESTAMPTZ,
+  created_at               TIMESTAMPTZ DEFAULT now(),
+  updated_at               TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (tenant_id, borrow_code)
+);
+
+CREATE TABLE borrow_items (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  borrow_id         UUID REFERENCES borrows(id) ON DELETE CASCADE,
+  product_name      TEXT NOT NULL,
+  category          TEXT,
+  quantity          NUMERIC(10,2) NOT NULL,
+  approved_quantity NUMERIC(10,2),     -- may be less than requested
+  unit              TEXT,
+  notes             TEXT
+);
+
+-- ==========================================
+-- END OF PHASE B
 -- ==========================================
