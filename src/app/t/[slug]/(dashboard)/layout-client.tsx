@@ -54,9 +54,12 @@ export function DashboardLayoutClient({
 
   const showDesktop = useDesktop && isLargeScreen;
 
+  // pathname is tenant-scoped (e.g. /t/somchai/settings/stores/new) — strip
+  // the /t/{slug} prefix so NO_STORE_ALLOWED matches the logical path.
+  const logicalPath = pathname.replace(/^\/t\/[^/]+/, '') || '/';
   const needsStore =
     stores.length === 0 &&
-    !NO_STORE_ALLOWED.some((p) => pathname.startsWith(p));
+    !NO_STORE_ALLOWED.some((p) => logicalPath.startsWith(p));
 
   const content = needsStore ? (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
