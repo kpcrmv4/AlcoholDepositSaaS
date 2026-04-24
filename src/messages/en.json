@@ -3347,8 +3347,28 @@
       "resumeButton": "Resume tenant",
       "suspendReasonPrompt": "Reason for suspension? (optional)",
       "dangerDescription": "Suspending a tenant blocks all user sessions and redirects to /suspended. Data is preserved and can be resumed at any time.",
+      "resetPasswordButton": "Reset owner password",
+      "resetPasswordConfirm": "Reset owner password? The old password will stop working immediately.",
+      "resetPasswordHint": "Generates a fresh temporary password for the tenant owner (for lost-password cases) — the old password is invalidated immediately.",
+      "noOwnerWarning": "This tenant has no owner account linked yet.",
       "recentAudit": "Recent audit",
       "auditEmpty": "No audit entries yet."
+    },
+    "credentials": {
+      "successMsg": "Tenant {company} created successfully",
+      "warnTitle": "Save these credentials now!",
+      "warnBody": "The temp password is not stored anywhere else — if you close this page you'll need to click \"Reset password\" to generate a new one.",
+      "heading": "Owner account",
+      "email": "Email",
+      "tempPassword": "Temp password",
+      "loginUrl": "Login URL",
+      "copy": "Copy",
+      "copied": "✅ Copied",
+      "copyAll": "Copy all",
+      "copyAllHint": "Copy this message and send it to the tenant owner via LINE/SMS",
+      "instruction": "The owner should change their password from the profile page after the first login.",
+      "continue": "Go to tenant detail",
+      "resetTitle": "Password reset successful"
     },
     "audit": {
       "title": "Audit log",

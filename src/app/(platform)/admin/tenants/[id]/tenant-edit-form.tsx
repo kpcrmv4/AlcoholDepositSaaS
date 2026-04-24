@@ -23,6 +23,12 @@ interface TenantRow {
   line_owner_group_id: string | null;
   brand_color: string | null;
   logo_url: string | null;
+  owner_user_id: string | null;
+}
+
+interface ResetResult {
+  email: string;
+  temp_password: string;
 }
 
 export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
@@ -32,6 +38,8 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
   const [saving, setSaving] = useState(false);
   const [verifyResult, setVerifyResult] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<ResetResult | null>(null);
+  const [resetCopied, setResetCopied] = useState<string | null>(null);
 
   async function savePatch(payload: Record<string, unknown>) {
     setSaving(true);
@@ -78,6 +86,25 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
   async function resume() {
     const res = await fetch(`/api/platform/tenants/${tenant.id}/resume`, { method: 'POST' });
     if (res.ok) router.refresh();
+  }
+
+  async function resetOwnerPassword() {
+    if (!confirm(t('tenantDetail.resetPasswordConfirm'))) return;
+    const res = await fetch(`/api/platform/tenants/${tenant.id}/reset-owner-password`, {
+      method: 'POST',
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      setMsg(`❌ ${body.error || res.statusText}`);
+      return;
+    }
+    setResetResult({ email: body.email, temp_password: body.temp_password });
+  }
+
+  async function copyToClipboard(key: string, value: string) {
+    await navigator.clipboard.writeText(value);
+    setResetCopied(key);
+    setTimeout(() => setResetCopied(null), 1500);
   }
 
   // Legacy plans that may still exist in DB — show alongside trial/pro so admins
@@ -229,25 +256,91 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
         )}
 
         {tab === 'danger' && (
-          <div className="space-y-3 text-sm">
-            {tenant.status === 'suspended' ? (
-              <button
-                onClick={resume}
-                className="rounded bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
-              >
-                {t('tenantDetail.resumeButton')}
-              </button>
-            ) : (
-              <button
-                onClick={suspend}
-                className="rounded bg-amber-600 px-4 py-2 text-white hover:bg-amber-700"
-              >
-                {t('tenantDetail.suspendButton')}
-              </button>
+          <div className="space-y-6 text-sm">
+            <div className="space-y-2">
+              {tenant.status === 'suspended' ? (
+                <button
+                  onClick={resume}
+                  className="rounded bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
+                >
+                  {t('tenantDetail.resumeButton')}
+                </button>
+              ) : (
+                <button
+                  onClick={suspend}
+                  className="rounded bg-amber-600 px-4 py-2 text-white hover:bg-amber-700"
+                >
+                  {t('tenantDetail.suspendButton')}
+                </button>
+              )}
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('tenantDetail.dangerDescription')}
+              </p>
+            </div>
+
+            <div className="space-y-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+              {tenant.owner_user_id ? (
+                <>
+                  <button
+                    onClick={resetOwnerPassword}
+                    className="rounded bg-rose-600 px-4 py-2 text-white hover:bg-rose-700"
+                  >
+                    🔑 {t('tenantDetail.resetPasswordButton')}
+                  </button>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {t('tenantDetail.resetPasswordHint')}
+                  </p>
+                </>
+              ) : (
+                <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                  ⚠️ {t('tenantDetail.noOwnerWarning')}
+                </div>
+              )}
+            </div>
+
+            {resetResult && (
+              <div className="space-y-3 rounded border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950">
+                <div className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+                  ✅ {t('credentials.resetTitle')}
+                </div>
+
+                <div>
+                  <div className="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">{t('credentials.email')}</div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 select-all rounded border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900">
+                      {resetResult.email}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard('email', resetResult.email)}
+                      className="rounded border border-gray-300 px-3 py-2 text-xs hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
+                    >
+                      {resetCopied === 'email' ? t('credentials.copied') : t('credentials.copy')}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">{t('credentials.tempPassword')}</div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 select-all rounded border border-gray-200 bg-white px-3 py-2 font-mono text-sm tracking-wider dark:border-gray-700 dark:bg-gray-900">
+                      {resetResult.temp_password}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard('password', resetResult.temp_password)}
+                      className="rounded border border-gray-300 px-3 py-2 text-xs hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
+                    >
+                      {resetCopied === 'password' ? t('credentials.copied') : t('credentials.copy')}
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  {t('credentials.warnBody')}
+                </p>
+              </div>
             )}
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {t('tenantDetail.dangerDescription')}
-            </p>
           </div>
         )}
       </div>

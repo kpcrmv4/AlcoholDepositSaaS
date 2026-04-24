@@ -6,12 +6,22 @@ import { useTranslations } from 'next-intl';
 
 const TRIAL_DAYS = 7;
 
+interface CreatedResult {
+  tenant: { id: string; slug: string; company_name: string };
+  owner_credentials: {
+    email: string;
+    temp_password: string;
+    user_id: string;
+  };
+}
+
 export default function NewTenantPage() {
   const router = useRouter();
   const t = useTranslations('platformAdmin');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<'trial' | 'pro'>('trial');
+  const [created, setCreated] = useState<CreatedResult | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -52,8 +62,18 @@ export default function NewTenantPage() {
       return;
     }
 
-    const { tenant } = await res.json();
-    router.push(`/admin/tenants/${tenant.id}`);
+    const body = (await res.json()) as CreatedResult;
+    setCreated(body);
+    setSubmitting(false);
+  }
+
+  if (created) {
+    return (
+      <CreatedCredentials
+        result={created}
+        onContinue={() => router.push(`/admin/tenants/${created.tenant.id}`)}
+      />
+    );
   }
 
   return (
@@ -137,6 +157,124 @@ export default function NewTenantPage() {
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function CreatedCredentials({
+  result,
+  onContinue,
+}: {
+  result: CreatedResult;
+  onContinue: () => void;
+}) {
+  const t = useTranslations('platformAdmin');
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copy = async (label: string, value: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopied(label);
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  const combined = `${t('credentials.loginUrl')}: ${typeof window !== 'undefined' ? window.location.origin : ''}/login
+${t('credentials.email')}: ${result.owner_credentials.email}
+${t('credentials.tempPassword')}: ${result.owner_credentials.temp_password}`;
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-4">
+      <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+        ✅ {t('credentials.successMsg', { company: result.tenant.company_name })}
+      </div>
+
+      <div className="rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+        <p className="font-semibold">⚠️ {t('credentials.warnTitle')}</p>
+        <p className="mt-1 text-xs">{t('credentials.warnBody')}</p>
+      </div>
+
+      <section className="space-y-3 rounded border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+        <h2 className="text-lg font-semibold">{t('credentials.heading')}</h2>
+
+        <CredRow
+          label={t('credentials.email')}
+          value={result.owner_credentials.email}
+          copied={copied === 'email'}
+          onCopy={() => copy('email', result.owner_credentials.email)}
+        />
+
+        <CredRow
+          label={t('credentials.tempPassword')}
+          value={result.owner_credentials.temp_password}
+          copied={copied === 'password'}
+          onCopy={() => copy('password', result.owner_credentials.temp_password)}
+          mono
+        />
+
+        <div className="rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950">
+          <div className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+            {t('credentials.copyAllHint')}
+          </div>
+          <pre className="whitespace-pre-wrap break-words text-xs text-gray-800 dark:text-gray-200">{combined}</pre>
+          <button
+            type="button"
+            onClick={() => copy('all', combined)}
+            className="mt-2 rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+          >
+            {copied === 'all' ? t('credentials.copied') : t('credentials.copyAll')}
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {t('credentials.instruction')}
+        </p>
+      </section>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={onContinue}
+          className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          {t('credentials.continue')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CredRow({
+  label,
+  value,
+  copied,
+  onCopy,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  copied: boolean;
+  onCopy: () => void;
+  mono?: boolean;
+}) {
+  const t = useTranslations('platformAdmin');
+  return (
+    <div>
+      <div className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{label}</div>
+      <div className="flex items-center gap-2">
+        <code
+          className={`flex-1 select-all rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-950 ${
+            mono ? 'font-mono tracking-wider' : ''
+          }`}
+        >
+          {value}
+        </code>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="rounded border border-gray-300 px-3 py-2 text-xs hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
+        >
+          {copied ? t('credentials.copied') : t('credentials.copy')}
+        </button>
+      </div>
     </div>
   );
 }
