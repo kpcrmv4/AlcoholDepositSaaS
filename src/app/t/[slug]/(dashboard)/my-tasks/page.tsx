@@ -174,6 +174,24 @@ export default function MyTasksPage() {
   // Accept form state (for deposit requests)
   const [acceptForm, setAcceptForm] = useState<AcceptFormState>(defaultAcceptForm);
   const [isAccepting, setIsAccepting] = useState(false);
+  const [storeDurationDays, setStoreDurationDays] = useState<number | null>(null);
+
+  // Load per-store default expiry duration (staff can override in the form)
+  useEffect(() => {
+    if (!currentStoreId) return;
+    const supabase = createClient();
+    supabase
+      .from('store_settings')
+      .select('deposit_duration_days')
+      .eq('store_id', currentStoreId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.deposit_duration_days) {
+          setStoreDurationDays(data.deposit_duration_days);
+          setAcceptForm((prev) => ({ ...prev, storageDays: String(data.deposit_duration_days) }));
+        }
+      });
+  }, [currentStoreId]);
 
   // Reject modal state
   const [rejectState, setRejectState] = useState<RejectState | null>(null);
@@ -267,15 +285,21 @@ export default function MyTasksPage() {
 
   const handleCardClick = useCallback((item: TableCardItem) => {
     setSelectedItem(item);
-    setAcceptForm(defaultAcceptForm);
+    setAcceptForm({
+      ...defaultAcceptForm,
+      storageDays: storeDurationDays ? String(storeDurationDays) : defaultAcceptForm.storageDays,
+    });
     setIsDetailOpen(true);
-  }, []);
+  }, [storeDurationDays]);
 
   const closeDetail = useCallback(() => {
     setIsDetailOpen(false);
     setSelectedItem(null);
-    setAcceptForm(defaultAcceptForm);
-  }, []);
+    setAcceptForm({
+      ...defaultAcceptForm,
+      storageDays: storeDurationDays ? String(storeDurationDays) : defaultAcceptForm.storageDays,
+    });
+  }, [storeDurationDays]);
 
   // ---------------------------------------------------------------------------
   // Deposit Request: Accept

@@ -13,10 +13,11 @@ import {
   CardContent,
   toast,
 } from '@/components/ui';
-import { ArrowLeft, Bell, Save, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Bell, Save, MessageCircle, Clock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface CustomerNotifSettings {
+  deposit_duration_days: number;
   customer_notify_expiry_enabled: boolean;
   customer_notify_expiry_days: number;
   customer_notify_withdrawal_enabled: boolean;
@@ -27,6 +28,7 @@ interface CustomerNotifSettings {
 }
 
 const defaults: CustomerNotifSettings = {
+  deposit_duration_days: 30,
   customer_notify_expiry_enabled: true,
   customer_notify_expiry_days: 7,
   customer_notify_withdrawal_enabled: true,
@@ -50,12 +52,13 @@ export default function NotificationSettingsPage() {
     const supabase = createClient();
     const { data } = await supabase
       .from('store_settings')
-      .select('customer_notify_expiry_enabled, customer_notify_expiry_days, customer_notify_withdrawal_enabled, customer_notify_deposit_enabled, customer_notify_promotion_enabled, customer_notify_channels, line_notify_enabled')
+      .select('deposit_duration_days, customer_notify_expiry_enabled, customer_notify_expiry_days, customer_notify_withdrawal_enabled, customer_notify_deposit_enabled, customer_notify_promotion_enabled, customer_notify_channels, line_notify_enabled')
       .eq('store_id', currentStoreId)
       .single();
 
     if (data) {
       setSettings({
+        deposit_duration_days: data.deposit_duration_days ?? 30,
         customer_notify_expiry_enabled: data.customer_notify_expiry_enabled ?? true,
         customer_notify_expiry_days: data.customer_notify_expiry_days ?? 7,
         customer_notify_withdrawal_enabled: data.customer_notify_withdrawal_enabled ?? true,
@@ -129,6 +132,28 @@ export default function NotificationSettingsPage() {
           {t('notif.subtitle')}
         </p>
       </div>
+
+      {/* Deposit duration policy */}
+      <Card padding="none">
+        <CardHeader title={t('notif.depositPolicyTitle')} />
+        <CardContent>
+          <Input
+            label={t('notif.depositDurationLabel')}
+            type="number"
+            min="1"
+            max="3650"
+            value={String(settings.deposit_duration_days)}
+            onChange={(e) =>
+              setSettings((prev) => ({
+                ...prev,
+                deposit_duration_days: Math.max(1, parseInt(e.target.value) || 30),
+              }))
+            }
+            hint={t('notif.depositDurationHint')}
+            leftIcon={<Clock className="h-4 w-4" />}
+          />
+        </CardContent>
+      </Card>
 
       {/* Channels */}
       <Card padding="none">

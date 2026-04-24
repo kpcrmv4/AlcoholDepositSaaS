@@ -112,13 +112,20 @@ export default function DepositRequestsPage() {
     const supabase = createClient();
 
     if (approvalAction === 'approve') {
-      // Fetch store_code for deposit code format
+      // Fetch store_code + deposit duration policy
       const { data: storeData } = await supabase
         .from('stores')
         .select('store_code')
         .eq('id', currentStoreId)
         .single();
       const storeCode = storeData?.store_code || 'UNKNOWN';
+
+      const { data: policy } = await supabase
+        .from('store_settings')
+        .select('deposit_duration_days')
+        .eq('store_id', currentStoreId)
+        .maybeSingle();
+      const durationDays = policy?.deposit_duration_days ?? 30;
 
       // Generate deposit code: DEP-{STORE_CODE}-{5 random alphanumeric}
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -140,7 +147,7 @@ export default function DepositRequestsPage() {
         remaining_qty: selectedRequest.quantity,
         remaining_percent: 100,
         status: 'pending_confirm',
-        expiry_date: expiryDateISO(30),
+        expiry_date: expiryDateISO(durationDays),
         received_by: user.id,
         notes: approvalNotes || null,
       });

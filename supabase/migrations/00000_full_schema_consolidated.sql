@@ -537,6 +537,10 @@ CREATE TABLE store_settings (
   staff_registration_code TEXT,
   receipt_settings JSONB,
 
+  -- Deposit policy — default expiry duration (staff can override per-deposit)
+  deposit_duration_days INTEGER NOT NULL DEFAULT 30
+    CHECK (deposit_duration_days > 0 AND deposit_duration_days <= 3650),
+
   -- Customer notification prefs
   customer_notify_expiry_enabled    BOOLEAN DEFAULT true,
   customer_notify_expiry_days       INTEGER DEFAULT 7,

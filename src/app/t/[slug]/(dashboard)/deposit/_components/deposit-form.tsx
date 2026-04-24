@@ -354,6 +354,7 @@ export function DepositForm({ onBack, onSuccess }: DepositFormProps) {
   const [isNoDeposit, setIsNoDeposit] = useState(false);
   const [isVip, setIsVip] = useState(false);
   const [expiryDays, setExpiryDays] = useState('30');
+  const [hasLoadedExpiryDefault, setHasLoadedExpiryDefault] = useState(false);
   const [notes, setNotes] = useState('');
   const [receivedPhotoUrl, setReceivedPhotoUrl] = useState<string | null>(null);
 
@@ -385,6 +386,23 @@ export function DepositForm({ onBack, onSuccess }: DepositFormProps) {
     if (data) setProducts(data);
     setLoadingProducts(false);
   }, [currentStoreId]);
+
+  // ----- Load per-store default expiry duration (staff can still override) -----
+  useEffect(() => {
+    if (!currentStoreId || hasLoadedExpiryDefault) return;
+    const supabase = createClient();
+    supabase
+      .from('store_settings')
+      .select('deposit_duration_days')
+      .eq('store_id', currentStoreId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.deposit_duration_days) {
+          setExpiryDays(String(data.deposit_duration_days));
+        }
+        setHasLoadedExpiryDefault(true);
+      });
+  }, [currentStoreId, hasLoadedExpiryDefault]);
 
   // ----- Fetch unique customers from deposits -----
   const fetchCustomers = useCallback(async () => {

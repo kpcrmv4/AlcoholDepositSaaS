@@ -2047,6 +2047,7 @@ export type Database = {
           customer_notify_promotion_enabled: boolean | null
           customer_notify_withdrawal_enabled: boolean | null
           daily_reminder_enabled: boolean | null
+          deposit_duration_days: number
           diff_tolerance: number | null
           follow_up_enabled: boolean | null
           id: string
@@ -2084,6 +2085,7 @@ export type Database = {
           customer_notify_promotion_enabled?: boolean | null
           customer_notify_withdrawal_enabled?: boolean | null
           daily_reminder_enabled?: boolean | null
+          deposit_duration_days?: number
           diff_tolerance?: number | null
           follow_up_enabled?: boolean | null
           id?: string
@@ -2121,6 +2123,7 @@ export type Database = {
           customer_notify_promotion_enabled?: boolean | null
           customer_notify_withdrawal_enabled?: boolean | null
           daily_reminder_enabled?: boolean | null
+          deposit_duration_days?: number
           diff_tolerance?: number | null
           follow_up_enabled?: boolean | null
           id?: string
