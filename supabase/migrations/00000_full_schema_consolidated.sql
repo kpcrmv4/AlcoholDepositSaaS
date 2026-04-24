@@ -1,10 +1,17 @@
 -- ==========================================
--- StockManager — Consolidated Schema (Fresh Install)
--- Merged from migrations 00001 through 00018
--- Generated: 2026-04-11
+-- AlcoholDepositSaaS — Consolidated Schema (Fresh Install)
+-- SaaS Multi-Tenant — Single Source of Truth
+-- Generated: 2026-04-23
 --
--- This single file creates the entire schema from scratch.
--- Do NOT run individual 00001-00018 migrations if using this file.
+-- This single file creates the entire schema from scratch including:
+--   • Multi-tenant root (tenants, platform_admins)
+--   • Per-store feature toggles + per-tenant role permission overrides
+--   • Per-tenant LINE OA config with optional per-store override
+--   • Branch-limit enforcement (tenants.max_branches)
+--   • RLS with mandatory tenant_id isolation layer
+--
+-- Status: 🚧 Phase A — tenant root + identity tables
+-- (subsequent phases append more tables, indexes, RLS, seeds)
 -- ==========================================
 
 -- ==========================================
@@ -14,8 +21,16 @@ ALTER DATABASE postgres SET timezone TO 'Asia/Bangkok';
 SET timezone = 'Asia/Bangkok';
 
 -- ==========================================
--- ENUMS (core + chat + borrow)
+-- ENUMS
 -- ==========================================
+
+-- SaaS / tenancy enums
+CREATE TYPE tenant_status AS ENUM ('active', 'suspended', 'trial', 'cancelled');
+CREATE TYPE tenant_plan   AS ENUM ('trial', 'starter', 'growth', 'enterprise', 'custom');
+CREATE TYPE line_mode     AS ENUM ('tenant', 'per_store');
+CREATE TYPE platform_admin_role AS ENUM ('super_admin', 'admin', 'support', 'readonly');
+
+-- Domain enums (existing)
 CREATE TYPE user_role AS ENUM ('owner', 'accountant', 'manager', 'bar', 'staff', 'customer', 'hq');
 CREATE TYPE deposit_status AS ENUM ('pending_confirm', 'in_store', 'pending_withdrawal', 'withdrawn', 'expired', 'transferred_out');
 CREATE TYPE comparison_status AS ENUM ('pending', 'explained', 'approved', 'rejected');
@@ -28,130 +43,318 @@ CREATE TYPE borrow_status AS ENUM ('pending_approval', 'approved', 'pos_adjustin
 CREATE TYPE chat_room_type AS ENUM ('store', 'direct', 'cross_store');
 CREATE TYPE chat_message_type AS ENUM ('text', 'image', 'action_card', 'system');
 CREATE TYPE chat_member_role AS ENUM ('member', 'admin');
+CREATE TYPE commission_type AS ENUM ('ae_commission', 'bottle_commission');
 
--- CORE TABLES
+-- ==========================================
+-- TENANTS — root entity (a "tenant" = a customer company)
+-- ==========================================
+
+CREATE TABLE tenants (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug             TEXT UNIQUE NOT NULL,            -- URL-safe identifier: /t/{slug}/...
+  company_name     TEXT NOT NULL,
+  legal_name       TEXT,                            -- ชื่อนิติบุคคล (optional)
+  tax_id           TEXT,                            -- เลขผู้เสียภาษี (optional)
+  contact_email    TEXT NOT NULL,
+  contact_phone    TEXT,
+  country          TEXT DEFAULT 'TH',
+  timezone         TEXT DEFAULT 'Asia/Bangkok',
+
+  -- Subscription / limits (set by platform admin)
+  status               tenant_status NOT NULL DEFAULT 'trial',
+  plan                 tenant_plan   NOT NULL DEFAULT 'trial',
+  max_branches         INTEGER NOT NULL DEFAULT 1
+                       CHECK (max_branches >= 1 AND max_branches <= 1000),
+  max_users            INTEGER NOT NULL DEFAULT 10,
+  trial_ends_at        TIMESTAMPTZ DEFAULT (now() + INTERVAL '14 days'),
+  subscription_ends_at TIMESTAMPTZ,
+
+  -- LINE OA defaults (per-tenant) — stores may override when line_mode='per_store'
+  line_mode            line_mode NOT NULL DEFAULT 'per_store',
+  line_channel_id      TEXT,
+  line_channel_secret  TEXT,
+  line_channel_token   TEXT,
+  line_basic_id        TEXT,                        -- e.g. '@companyA'
+  liff_id              TEXT,                        -- LIFF id of this tenant
+  line_owner_group_id  TEXT,                        -- LINE group id for owner alerts
+
+  -- Branding (used in UI + LIFF)
+  logo_url         TEXT,
+  brand_color      TEXT DEFAULT '#0ea5e9',
+
+  -- Ownership (set after owner profile is created)
+  owner_user_id    UUID,                            -- FK → profiles.id (added later, deferred)
+
+  -- Audit
+  created_by       UUID,                            -- FK → platform_admins.id (deferred)
+  created_at       TIMESTAMPTZ DEFAULT now(),
+  updated_at       TIMESTAMPTZ DEFAULT now(),
+  suspended_at     TIMESTAMPTZ,
+  suspension_reason TEXT
+);
+
+CREATE UNIQUE INDEX idx_tenants_line_channel
+  ON tenants(line_channel_id) WHERE line_channel_id IS NOT NULL;
+
+COMMENT ON TABLE tenants IS
+  'Root entity for multi-tenant isolation. Every domain row carries tenant_id.';
+COMMENT ON COLUMN tenants.line_mode IS
+  '''tenant'' = single LINE OA shared by all stores. ''per_store'' = each store has its own LINE OA (default).';
+COMMENT ON COLUMN tenants.max_branches IS
+  'Hard limit on number of active stores under this tenant. Enforced via trigger.';
+
+-- ==========================================
+-- PLATFORM ADMINS — super-admin identities (separate from tenant users)
+-- ==========================================
+
+CREATE TABLE platform_admins (
+  id           UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email        TEXT UNIQUE NOT NULL,
+  display_name TEXT,
+  role         platform_admin_role NOT NULL DEFAULT 'admin',
+  active       BOOLEAN NOT NULL DEFAULT true,
+  created_at   TIMESTAMPTZ DEFAULT now(),
+  created_by   UUID REFERENCES platform_admins(id)
+);
+
+COMMENT ON TABLE platform_admins IS
+  'Platform-level admins. Identity here grants ZERO implicit access to any tenant data; admins must use audited service-role endpoints to inspect tenant rows.';
+
+-- ==========================================
+-- PROFILES — tenant users (NOT platform admins)
 -- ==========================================
 
 CREATE TABLE profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  username TEXT UNIQUE NOT NULL,
-  role user_role NOT NULL DEFAULT 'staff',
+  id           UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  tenant_id    UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  username     TEXT NOT NULL,
+  role         user_role NOT NULL DEFAULT 'staff',
   line_user_id TEXT,
   display_name TEXT,
-  avatar_url TEXT,
-  active BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  created_by UUID REFERENCES profiles(id)
+  avatar_url   TEXT,
+  active       BOOLEAN DEFAULT true,
+  created_at   TIMESTAMPTZ DEFAULT now(),
+  created_by   UUID REFERENCES profiles(id),
+
+  -- Username unique within a tenant only (so 'somchai' can exist in multiple tenants)
+  UNIQUE (tenant_id, username),
+  -- A LINE user may belong to multiple tenants but only once per tenant
+  UNIQUE (tenant_id, line_user_id)
 );
+
+-- Now we can add the deferred FKs on tenants
+ALTER TABLE tenants
+  ADD CONSTRAINT tenants_owner_fk FOREIGN KEY (owner_user_id) REFERENCES profiles(id) ON DELETE SET NULL,
+  ADD CONSTRAINT tenants_created_by_fk FOREIGN KEY (created_by) REFERENCES platform_admins(id) ON DELETE SET NULL;
+
+-- ==========================================
+-- USER PERMISSIONS — individual permission grants (overrides role defaults)
+-- ==========================================
 
 CREATE TABLE user_permissions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  permission TEXT NOT NULL,
-  granted_by UUID REFERENCES profiles(id),
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(user_id, permission)
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id     UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  permission  TEXT NOT NULL,
+  granted_by  UUID REFERENCES profiles(id),
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (user_id, permission)
 );
+
+-- ==========================================
+-- STORES — branches under a tenant
+-- ==========================================
 
 CREATE TABLE stores (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_code TEXT UNIQUE NOT NULL,
-  store_name TEXT NOT NULL,
-  line_token TEXT,
-  line_channel_id TEXT,
-  line_channel_secret TEXT,
-  /** กลุ่มแจ้งเตือนสต๊อก (daily reminder, comparison, approval) */
-  stock_notify_group_id TEXT,
-  /** กลุ่มแจ้งเตือนฝาก/เบิกเหล้า (staff) */
-  deposit_notify_group_id TEXT,
-  /** กลุ่มบาร์ยืนยันรับเหล้า (bar confirm) */
-  bar_notify_group_id TEXT,
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id            UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_code           TEXT NOT NULL,
+  store_name           TEXT NOT NULL,
+
+  -- Per-store LINE OA (overrides tenant-level when line_mode='per_store')
+  line_token           TEXT,
+  line_channel_id      TEXT,
+  line_channel_secret  TEXT,
+
+  -- LINE group ids (always per-store, regardless of line_mode)
+  stock_notify_group_id   TEXT,    -- กลุ่มแจ้งเตือนสต๊อก
+  deposit_notify_group_id TEXT,    -- กลุ่มแจ้งเตือนฝาก/เบิก (staff)
+  bar_notify_group_id     TEXT,    -- กลุ่มบาร์ยืนยันรับเหล้า
+
   borrow_notification_roles TEXT[] DEFAULT ARRAY['owner', 'manager']::text[],
-  manager_id UUID REFERENCES profiles(id),
-  is_central BOOLEAN DEFAULT false,
-  active BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now()
+  manager_id           UUID REFERENCES profiles(id),
+  is_central           BOOLEAN DEFAULT false,
+  active               BOOLEAN DEFAULT true,
+  created_at           TIMESTAMPTZ DEFAULT now(),
+
+  UNIQUE (tenant_id, store_code)
 );
 
+-- Per-store LINE channel must still be globally unique (one channel = one route)
+CREATE UNIQUE INDEX idx_stores_line_channel
+  ON stores(line_channel_id) WHERE line_channel_id IS NOT NULL;
+
+-- ==========================================
+-- USER ↔ STORE assignment
+-- ==========================================
+
 CREATE TABLE user_stores (
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  user_id  UUID REFERENCES profiles(id) ON DELETE CASCADE,
   store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, store_id)
 );
+
+-- ==========================================
+-- TENANT INVITATIONS — owner invites staff via email
+-- ==========================================
+
+CREATE TABLE tenant_invitations (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  email       TEXT NOT NULL,
+  role        user_role NOT NULL DEFAULT 'staff',
+  store_ids   UUID[] DEFAULT '{}',
+  token       TEXT UNIQUE NOT NULL,
+  invited_by  UUID REFERENCES profiles(id),
+  accepted_at TIMESTAMPTZ,
+  accepted_by UUID REFERENCES profiles(id),
+  expires_at  TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '7 days'),
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (tenant_id, email)
+);
+
+-- ==========================================
+-- TENANT AUDIT LOGS — platform-admin actions on tenants
+-- ==========================================
+
+CREATE TABLE tenant_audit_logs (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id         UUID REFERENCES tenants(id) ON DELETE SET NULL,
+  platform_admin_id UUID REFERENCES platform_admins(id),
+  action            TEXT NOT NULL,                  -- 'create' / 'suspend' / 'resume' / 'change_plan' / 'impersonate'
+  payload           JSONB,
+  ip_address        INET,
+  user_agent        TEXT,
+  created_at        TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- STORE FEATURES — per-store module enable/disable
+-- ==========================================
+-- Each store can toggle which modules are active. Defaults to all enabled.
+-- Feature keys: 'stock', 'deposit', 'withdrawal', 'transfer', 'borrow',
+--               'hq_warehouse', 'commission', 'chat', 'print_server',
+--               'line_messaging', 'announcements', 'penalties'
+
+CREATE TABLE store_features (
+  store_id    UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  feature_key TEXT NOT NULL,
+  enabled     BOOLEAN NOT NULL DEFAULT true,
+  updated_at  TIMESTAMPTZ DEFAULT now(),
+  updated_by  UUID REFERENCES profiles(id),
+  PRIMARY KEY (store_id, feature_key)
+);
+
+COMMENT ON TABLE store_features IS
+  'Per-store module toggle. Absent row = default (usually enabled).';
+
+-- ==========================================
+-- ROLE PERMISSIONS — per-tenant role ↔ permission mapping
+-- ==========================================
+-- Each tenant can customize which permissions a role has access to.
+-- On tenant creation, default permission set is seeded (see Phase G).
+-- Permission keys use dotted notation: 'deposits.view', 'stock.manage', etc.
+
+CREATE TABLE role_permissions (
+  tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  role           user_role NOT NULL,
+  permission_key TEXT NOT NULL,
+  enabled        BOOLEAN NOT NULL DEFAULT true,
+  updated_at     TIMESTAMPTZ DEFAULT now(),
+  updated_by     UUID REFERENCES profiles(id),
+  PRIMARY KEY (tenant_id, role, permission_key)
+);
+
+COMMENT ON TABLE role_permissions IS
+  'Tenant-level override of role → permission mapping. Owner can toggle which menus/actions each role can access.';
 
 -- ==========================================
 -- STOCK MODULE
 -- ==========================================
 
 CREATE TABLE products (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
-  product_code TEXT NOT NULL,
-  product_name TEXT NOT NULL,
-  category TEXT,
-  size TEXT,
-  unit TEXT,
-  price NUMERIC(10,2),
-  active BOOLEAN DEFAULT true,
-  count_status TEXT NOT NULL DEFAULT 'active',
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(store_id, product_code),
-  CONSTRAINT products_count_status_check CHECK (count_status IN ('active', 'excluded'))
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id      UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  product_code  TEXT NOT NULL,
+  product_name  TEXT NOT NULL,
+  category      TEXT,
+  size          TEXT,
+  unit          TEXT,
+  price         NUMERIC(10,2),
+  active        BOOLEAN DEFAULT true,
+  count_status  TEXT NOT NULL DEFAULT 'active'
+                CHECK (count_status IN ('active', 'excluded')),
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (store_id, product_code)
 );
 
 CREATE TABLE manual_counts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id),
-  count_date DATE NOT NULL,
-  product_code TEXT NOT NULL,
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id       UUID NOT NULL REFERENCES stores(id),
+  count_date     DATE NOT NULL,
+  product_code   TEXT NOT NULL,
   count_quantity NUMERIC(10,2) NOT NULL,
-  user_id UUID REFERENCES profiles(id),
-  notes TEXT,
-  verified BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  CONSTRAINT manual_counts_store_date_product_unique UNIQUE (store_id, count_date, product_code)
+  user_id        UUID REFERENCES profiles(id),
+  notes          TEXT,
+  verified       BOOLEAN DEFAULT false,
+  created_at     TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (store_id, count_date, product_code)
 );
 
 CREATE TABLE ocr_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id),
-  upload_date TIMESTAMPTZ DEFAULT now(),
-  count_items INTEGER,
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id        UUID NOT NULL REFERENCES stores(id),
+  upload_date     TIMESTAMPTZ DEFAULT now(),
+  count_items     INTEGER,
   processed_items INTEGER,
-  status TEXT DEFAULT 'pending',
-  upload_method TEXT,
-  file_urls TEXT[]
+  status          TEXT DEFAULT 'pending',
+  upload_method   TEXT,
+  file_urls       TEXT[]
 );
 
 CREATE TABLE ocr_items (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  ocr_log_id UUID REFERENCES ocr_logs(id) ON DELETE CASCADE,
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ocr_log_id   UUID REFERENCES ocr_logs(id) ON DELETE CASCADE,
   product_code TEXT,
   product_name TEXT,
-  qty_ocr NUMERIC(10,2),
-  unit TEXT,
-  confidence NUMERIC(5,2),
-  status TEXT DEFAULT 'pending',
-  notes TEXT
+  qty_ocr      NUMERIC(10,2),
+  unit         TEXT,
+  confidence   NUMERIC(5,2),
+  status       TEXT DEFAULT 'pending',
+  notes        TEXT
 );
 
 CREATE TABLE comparisons (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id),
-  comp_date DATE NOT NULL,
-  product_code TEXT NOT NULL,
-  product_name TEXT,
-  pos_quantity NUMERIC(10,2),
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id        UUID NOT NULL REFERENCES stores(id),
+  comp_date       DATE NOT NULL,
+  product_code    TEXT NOT NULL,
+  product_name    TEXT,
+  pos_quantity    NUMERIC(10,2),
   manual_quantity NUMERIC(10,2),
-  difference NUMERIC(10,2),
-  diff_percent NUMERIC(5,2),
-  status comparison_status DEFAULT 'pending',
-  explanation TEXT,
-  explained_by UUID REFERENCES profiles(id),
-  approved_by UUID REFERENCES profiles(id),
+  difference      NUMERIC(10,2),
+  diff_percent    NUMERIC(5,2),
+  status          comparison_status DEFAULT 'pending',
+  explanation     TEXT,
+  explained_by    UUID REFERENCES profiles(id),
+  approved_by     UUID REFERENCES profiles(id),
   approval_status TEXT,
-  owner_notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  owner_notes     TEXT,
+  created_at      TIMESTAMPTZ DEFAULT now()
 );
 
 -- ==========================================
@@ -159,268 +362,323 @@ CREATE TABLE comparisons (
 -- ==========================================
 
 CREATE TABLE deposits (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id),
-  deposit_code TEXT UNIQUE NOT NULL,
-  customer_id UUID REFERENCES profiles(id),
-  line_user_id TEXT,
-  customer_name TEXT NOT NULL,
-  customer_phone TEXT,
-  product_name TEXT NOT NULL,
-  category TEXT,
-  quantity NUMERIC(10,2) NOT NULL,
-  remaining_qty NUMERIC(10,2) NOT NULL,
-  remaining_percent NUMERIC(5,2) DEFAULT 100,
-  table_number TEXT,
-  status deposit_status DEFAULT 'pending_confirm',
-  expiry_date TIMESTAMPTZ,
-  received_by UUID REFERENCES profiles(id),
-  notes TEXT,
-  /** backward compat — รูปหลัก (ImgBB URL เดิม หรือ Supabase URL ใหม่) */
-  photo_url TEXT,
-  /** รูปที่ลูกค้าถ่ายส่งมาตอนฝาก (ผ่าน LIFF) */
-  customer_photo_url TEXT,
-  /** รูปที่ Staff ถ่ายตอนรับของเข้าร้าน */
-  received_photo_url TEXT,
-  /** รูปที่ Bar ถ่ายตอนยืนยัน */
-  confirm_photo_url TEXT,
-  /** VIP deposits have no expiry date (ฝากได้ไม่มีหมดอายุ) */
-  is_vip BOOLEAN DEFAULT false,
-  /** ไม่ฝาก — สร้างเป็นรายการ expired ทันที รอโอนคลังกลาง */
-  is_no_deposit BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT now()
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id            UUID NOT NULL REFERENCES stores(id),
+  deposit_code        TEXT NOT NULL,
+  customer_id         UUID REFERENCES profiles(id),
+  line_user_id        TEXT,
+  customer_name       TEXT NOT NULL,
+  customer_phone      TEXT,
+  product_name        TEXT NOT NULL,
+  category            TEXT,
+  quantity            NUMERIC(10,2) NOT NULL,
+  remaining_qty       NUMERIC(10,2) NOT NULL,
+  remaining_percent   NUMERIC(5,2) DEFAULT 100,
+  table_number        TEXT,
+  status              deposit_status DEFAULT 'pending_confirm',
+  expiry_date         TIMESTAMPTZ,
+  received_by         UUID REFERENCES profiles(id),
+  notes               TEXT,
+  photo_url           TEXT,         -- legacy main photo
+  customer_photo_url  TEXT,         -- customer submitted (via LIFF)
+  received_photo_url  TEXT,         -- staff received
+  confirm_photo_url   TEXT,         -- bar confirmed
+  is_vip              BOOLEAN DEFAULT false,  -- VIP = no expiry
+  is_no_deposit       BOOLEAN DEFAULT false,  -- created as expired for HQ transfer
+  created_at          TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (tenant_id, deposit_code)
 );
 
 CREATE TABLE withdrawals (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  deposit_id UUID REFERENCES deposits(id),
-  store_id UUID REFERENCES stores(id),
-  line_user_id TEXT,
-  customer_name TEXT,
-  product_name TEXT,
-  requested_qty NUMERIC(10,2),
-  actual_qty NUMERIC(10,2),
-  table_number TEXT,
-  status withdrawal_status DEFAULT 'pending',
-  processed_by UUID REFERENCES profiles(id),
-  notes TEXT,
-  photo_url TEXT,
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  deposit_id      UUID REFERENCES deposits(id),
+  store_id        UUID NOT NULL REFERENCES stores(id),
+  line_user_id    TEXT,
+  customer_name   TEXT,
+  product_name    TEXT,
+  requested_qty   NUMERIC(10,2),
+  actual_qty      NUMERIC(10,2),
+  table_number    TEXT,
+  status          withdrawal_status DEFAULT 'pending',
+  processed_by    UUID REFERENCES profiles(id),
+  notes           TEXT,
+  photo_url       TEXT,
   withdrawal_type TEXT DEFAULT 'in_store',
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at      TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE deposit_requests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id),
-  line_user_id TEXT NOT NULL,
-  customer_name TEXT,
-  customer_phone TEXT,
-  product_name TEXT,
-  quantity NUMERIC(10,2),
-  table_number TEXT,
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id          UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id           UUID NOT NULL REFERENCES stores(id),
+  line_user_id       TEXT NOT NULL,
+  customer_name      TEXT,
+  customer_phone     TEXT,
+  product_name       TEXT,
+  quantity           NUMERIC(10,2),
+  table_number       TEXT,
   customer_photo_url TEXT,
-  notes TEXT,
-  status TEXT DEFAULT 'pending',
-  created_at TIMESTAMPTZ DEFAULT now()
+  notes              TEXT,
+  status             TEXT DEFAULT 'pending',
+  created_at         TIMESTAMPTZ DEFAULT now()
 );
 
 -- ==========================================
--- TRANSFER MODULE
+-- TRANSFER MODULE (between stores WITHIN a tenant)
 -- ==========================================
 
 CREATE TABLE transfers (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  from_store_id UUID REFERENCES stores(id),
-  to_store_id UUID REFERENCES stores(id),
-  deposit_id UUID REFERENCES deposits(id),
-  product_name TEXT,
-  quantity NUMERIC(10,2),
-  status transfer_status DEFAULT 'pending',
-  requested_by UUID REFERENCES profiles(id),
-  confirmed_by UUID REFERENCES profiles(id),
-  notes TEXT,
-  photo_url TEXT,
-  confirm_photo_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id          UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  from_store_id      UUID NOT NULL REFERENCES stores(id),
+  to_store_id        UUID NOT NULL REFERENCES stores(id),
+  deposit_id         UUID REFERENCES deposits(id),
+  product_name       TEXT,
+  quantity           NUMERIC(10,2),
+  status             transfer_status DEFAULT 'pending',
+  requested_by       UUID REFERENCES profiles(id),
+  confirmed_by       UUID REFERENCES profiles(id),
+  notes              TEXT,
+  photo_url          TEXT,
+  confirm_photo_url  TEXT,
+  created_at         TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE hq_deposits (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  transfer_id UUID REFERENCES transfers(id),
-  deposit_id UUID REFERENCES deposits(id),
-  from_store_id UUID REFERENCES stores(id),
-  product_name TEXT,
-  customer_name TEXT,
-  deposit_code TEXT,
-  category TEXT,
-  quantity NUMERIC(10,2),
-  status hq_deposit_status DEFAULT 'awaiting_withdrawal',
-  received_by UUID REFERENCES profiles(id),
-  received_photo_url TEXT,
-  received_at TIMESTAMPTZ DEFAULT now(),
-  withdrawn_by UUID REFERENCES profiles(id),
-  withdrawal_notes TEXT,
-  withdrawn_at TIMESTAMPTZ,
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  transfer_id         UUID REFERENCES transfers(id),
+  deposit_id          UUID REFERENCES deposits(id),
+  from_store_id       UUID REFERENCES stores(id),
+  product_name        TEXT,
+  customer_name       TEXT,
+  deposit_code        TEXT,
+  category            TEXT,
+  quantity            NUMERIC(10,2),
+  status              hq_deposit_status DEFAULT 'awaiting_withdrawal',
+  received_by         UUID REFERENCES profiles(id),
+  received_photo_url  TEXT,
+  received_at         TIMESTAMPTZ DEFAULT now(),
+  withdrawn_by        UUID REFERENCES profiles(id),
+  withdrawal_notes    TEXT,
+  withdrawn_at        TIMESTAMPTZ,
+  notes               TEXT,
+  created_at          TIMESTAMPTZ DEFAULT now()
 );
 
 -- ==========================================
--- BORROW MODULE (ยืมสินค้าระหว่างสาขา)
+-- BORROW MODULE (between stores WITHIN a tenant)
 -- ==========================================
 
 CREATE TABLE borrows (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  borrow_code TEXT UNIQUE,                       -- human-readable ref: BRW-{FROM}-{TO}-XXXXX (see migration 00022)
-  from_store_id UUID REFERENCES stores(id),      -- สาขาที่ขอยืม (borrower)
-  to_store_id UUID REFERENCES stores(id),        -- สาขาเจ้าของสินค้า (lender)
-  requested_by UUID REFERENCES profiles(id),     -- คนที่สร้างคำขอ
-  status borrow_status DEFAULT 'pending_approval',
-  notes TEXT,
-  borrower_photo_url TEXT,                       -- รูปที่สาขาผู้ยืมถ่าย
-  lender_photo_url TEXT,                         -- รูปที่สาขาผู้ให้ยืมถ่าย
-  approved_by UUID REFERENCES profiles(id),
-  approved_at TIMESTAMPTZ,
-  borrower_pos_confirmed BOOLEAN DEFAULT false,
-  lender_pos_confirmed BOOLEAN DEFAULT false,
+  id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  borrow_code              TEXT,                    -- BRW-{FROM}-{TO}-XXXXX
+  from_store_id            UUID NOT NULL REFERENCES stores(id),
+  to_store_id              UUID NOT NULL REFERENCES stores(id),
+  requested_by             UUID REFERENCES profiles(id),
+  status                   borrow_status DEFAULT 'pending_approval',
+  notes                    TEXT,
+  borrower_photo_url       TEXT,
+  lender_photo_url         TEXT,
+  approved_by              UUID REFERENCES profiles(id),
+  approved_at              TIMESTAMPTZ,
+  borrower_pos_confirmed   BOOLEAN DEFAULT false,
+  lender_pos_confirmed     BOOLEAN DEFAULT false,
   borrower_pos_confirmed_by UUID REFERENCES profiles(id),
   borrower_pos_confirmed_at TIMESTAMPTZ,
-  lender_pos_confirmed_by UUID REFERENCES profiles(id),
-  lender_pos_confirmed_at TIMESTAMPTZ,
-  rejected_by UUID REFERENCES profiles(id),
-  rejected_at TIMESTAMPTZ,
-  rejection_reason TEXT,
-  cancelled_by UUID REFERENCES profiles(id),
-  cancelled_at TIMESTAMPTZ,
-  borrower_pos_bill_url TEXT,              -- รูป POS bill ฝั่งผู้ยืม
-  lender_pos_bill_url TEXT,                -- รูป POS bill ฝั่งผู้ให้ยืม
-  completed_at TIMESTAMPTZ,
+  lender_pos_confirmed_by  UUID REFERENCES profiles(id),
+  lender_pos_confirmed_at  TIMESTAMPTZ,
+  rejected_by              UUID REFERENCES profiles(id),
+  rejected_at              TIMESTAMPTZ,
+  rejection_reason         TEXT,
+  cancelled_by             UUID REFERENCES profiles(id),
+  cancelled_at             TIMESTAMPTZ,
+  borrower_pos_bill_url    TEXT,
+  lender_pos_bill_url      TEXT,
+  completed_at             TIMESTAMPTZ,
   -- Borrower return confirmation (status 'return_pending')
-  return_photo_url TEXT,
-  return_confirmed_by UUID REFERENCES profiles(id),
-  return_confirmed_at TIMESTAMPTZ,
-  return_notes TEXT,
+  return_photo_url         TEXT,
+  return_confirmed_by      UUID REFERENCES profiles(id),
+  return_confirmed_at      TIMESTAMPTZ,
+  return_notes             TEXT,
   -- Lender return-receipt confirmation (status 'returned')
   return_receipt_photo_url TEXT,
-  return_received_by UUID REFERENCES profiles(id),
-  return_received_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+  return_received_by       UUID REFERENCES profiles(id),
+  return_received_at       TIMESTAMPTZ,
+  created_at               TIMESTAMPTZ DEFAULT now(),
+  updated_at               TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (tenant_id, borrow_code)
 );
 
 CREATE TABLE borrow_items (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  borrow_id UUID REFERENCES borrows(id) ON DELETE CASCADE,
-  product_name TEXT NOT NULL,
-  category TEXT,
-  quantity NUMERIC(10,2) NOT NULL,
-  approved_quantity NUMERIC(10,2),          -- จำนวนที่อนุมัติจริง (อาจน้อยกว่าที่ขอ)
-  unit TEXT,
-  notes TEXT
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  borrow_id         UUID REFERENCES borrows(id) ON DELETE CASCADE,
+  product_name      TEXT NOT NULL,
+  category          TEXT,
+  quantity          NUMERIC(10,2) NOT NULL,
+  approved_quantity NUMERIC(10,2),     -- may be less than requested
+  unit              TEXT,
+  notes             TEXT
 );
 
 -- ==========================================
--- SHARED TABLES
+-- STORE SETTINGS — per-store config (1:1 with stores)
 -- ==========================================
 
 CREATE TABLE store_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
+  store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
   notify_time_daily TIME,
   notify_days TEXT[],
   diff_tolerance NUMERIC(5,2) DEFAULT 5,
   staff_registration_code TEXT,
   receipt_settings JSONB,
-  customer_notify_expiry_enabled BOOLEAN DEFAULT true,
-  customer_notify_expiry_days INTEGER DEFAULT 7,
+
+  -- Customer notification prefs
+  customer_notify_expiry_enabled    BOOLEAN DEFAULT true,
+  customer_notify_expiry_days       INTEGER DEFAULT 7,
   customer_notify_withdrawal_enabled BOOLEAN DEFAULT true,
-  customer_notify_deposit_enabled BOOLEAN DEFAULT true,
-  customer_notify_promotion_enabled BOOLEAN DEFAULT true,
-  customer_notify_channels TEXT[] DEFAULT '{pwa,line}',
-  /** เปิด/ปิดการส่งแจ้งเตือนผ่าน LINE ทั้งหมดของสาขา */
-  line_notify_enabled BOOLEAN DEFAULT true,
-  /** เปิด/ปิดเตือนนับสต๊อกประจำวัน (Cron Job 1) */
+  customer_notify_deposit_enabled    BOOLEAN DEFAULT true,
+  customer_notify_promotion_enabled  BOOLEAN DEFAULT true,
+  customer_notify_channels           TEXT[] DEFAULT '{pwa,line}',
+
+  -- LINE notification toggles
+  line_notify_enabled    BOOLEAN DEFAULT true,
   daily_reminder_enabled BOOLEAN DEFAULT true,
-  /** เปิด/ปิดติดตามรายการค้าง (Cron Job 3) */
-  follow_up_enabled BOOLEAN DEFAULT true,
-  /** Bot settings (00006) */
-  chat_bot_deposit_enabled BOOLEAN NOT NULL DEFAULT true,
+  follow_up_enabled      BOOLEAN DEFAULT true,
+
+  -- Chat bot settings
+  chat_bot_deposit_enabled    BOOLEAN NOT NULL DEFAULT true,
   chat_bot_withdrawal_enabled BOOLEAN NOT NULL DEFAULT true,
-  chat_bot_stock_enabled BOOLEAN NOT NULL DEFAULT true,
-  chat_bot_borrow_enabled BOOLEAN NOT NULL DEFAULT true,
-  chat_bot_transfer_enabled BOOLEAN NOT NULL DEFAULT true,
-  chat_bot_timeout_deposit INTEGER NOT NULL DEFAULT 15,
+  chat_bot_stock_enabled      BOOLEAN NOT NULL DEFAULT true,
+  chat_bot_borrow_enabled     BOOLEAN NOT NULL DEFAULT true,
+  chat_bot_transfer_enabled   BOOLEAN NOT NULL DEFAULT true,
+  chat_bot_timeout_deposit    INTEGER NOT NULL DEFAULT 15,
   chat_bot_timeout_withdrawal INTEGER NOT NULL DEFAULT 15,
-  chat_bot_timeout_stock INTEGER NOT NULL DEFAULT 60,
-  chat_bot_timeout_borrow INTEGER NOT NULL DEFAULT 30,
-  chat_bot_timeout_transfer INTEGER NOT NULL DEFAULT 120,
-  chat_bot_priority_deposit TEXT NOT NULL DEFAULT 'normal',
+  chat_bot_timeout_stock      INTEGER NOT NULL DEFAULT 60,
+  chat_bot_timeout_borrow     INTEGER NOT NULL DEFAULT 30,
+  chat_bot_timeout_transfer   INTEGER NOT NULL DEFAULT 120,
+  chat_bot_priority_deposit    TEXT NOT NULL DEFAULT 'normal',
   chat_bot_priority_withdrawal TEXT NOT NULL DEFAULT 'normal',
-  chat_bot_priority_stock TEXT NOT NULL DEFAULT 'normal',
-  chat_bot_priority_borrow TEXT NOT NULL DEFAULT 'normal',
-  chat_bot_priority_transfer TEXT NOT NULL DEFAULT 'normal',
+  chat_bot_priority_stock      TEXT NOT NULL DEFAULT 'normal',
+  chat_bot_priority_borrow     TEXT NOT NULL DEFAULT 'normal',
+  chat_bot_priority_transfer   TEXT NOT NULL DEFAULT 'normal',
   chat_bot_daily_summary_enabled BOOLEAN NOT NULL DEFAULT true,
-  /** Print Server (00013) */
+
+  -- Print server
   print_server_account_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
   print_server_working_hours JSONB DEFAULT '{"enabled": true, "startHour": 12, "startMinute": 0, "endHour": 6, "endMinute": 0}'::jsonb,
-  /** Withdrawal blocked days (00016) */
+
+  -- Withdrawal
   withdrawal_blocked_days TEXT[] DEFAULT '{Fri,Sat}'
 );
 
+-- ==========================================
+-- APP SETTINGS — platform-wide flags (platform_admin only)
+-- ==========================================
+
 CREATE TABLE app_settings (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  type TEXT DEFAULT 'string',
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  type        TEXT DEFAULT 'string',
   description TEXT
 );
 
-CREATE TABLE audit_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id),
-  action_type TEXT NOT NULL,
-  table_name TEXT,
-  record_id TEXT,
-  old_value JSONB,
-  new_value JSONB,
-  changed_by UUID REFERENCES profiles(id),
-  created_at TIMESTAMPTZ DEFAULT now()
+COMMENT ON TABLE app_settings IS
+  'Platform-level settings (feature flags, maintenance mode). NEVER tenant data.';
+
+-- ==========================================
+-- SYSTEM SETTINGS — per-tenant config (replaces global system_settings)
+-- ==========================================
+
+CREATE TABLE system_settings (
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  key         TEXT NOT NULL,
+  value       TEXT,
+  description TEXT,
+  updated_at  TIMESTAMPTZ DEFAULT now(),
+  updated_by  UUID REFERENCES profiles(id),
+  PRIMARY KEY (tenant_id, key)
 );
+
+COMMENT ON TABLE system_settings IS
+  'Per-tenant key-value settings (bot display name, webhook note, feature flags scoped to tenant).';
+
+-- ==========================================
+-- AUDIT LOGS — tenant-level audit trail
+-- ==========================================
+
+CREATE TABLE audit_logs (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id    UUID REFERENCES stores(id),
+  action_type TEXT NOT NULL,
+  table_name  TEXT,
+  record_id   TEXT,
+  old_value   JSONB,
+  new_value   JSONB,
+  changed_by  UUID REFERENCES profiles(id),
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- ==========================================
+-- NOTIFICATIONS
+-- ==========================================
 
 CREATE TABLE notifications (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES profiles(id),
-  store_id UUID REFERENCES stores(id),
-  title TEXT NOT NULL,
-  body TEXT,
-  type TEXT,
-  read BOOLEAN DEFAULT false,
-  data JSONB,
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id    UUID REFERENCES profiles(id),
+  store_id   UUID REFERENCES stores(id),
+  title      TEXT NOT NULL,
+  body       TEXT,
+  type       TEXT,
+  read       BOOLEAN DEFAULT false,
+  data       JSONB,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- ==========================================
+-- PENALTIES
+-- ==========================================
 
 CREATE TABLE penalties (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id),
-  staff_id UUID REFERENCES profiles(id),
-  reason TEXT,
-  amount NUMERIC(10,2),
-  status TEXT DEFAULT 'pending',
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id    UUID REFERENCES stores(id),
+  staff_id    UUID REFERENCES profiles(id),
+  reason      TEXT,
+  amount      NUMERIC(10,2),
+  status      TEXT DEFAULT 'pending',
   approved_by UUID REFERENCES profiles(id),
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  notes       TEXT,
+  created_at  TIMESTAMPTZ DEFAULT now()
 );
 
+-- ==========================================
+-- PUSH SUBSCRIPTIONS
+-- ==========================================
+
 CREATE TABLE push_subscriptions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id      UUID REFERENCES profiles(id) ON DELETE CASCADE,
   subscription JSONB NOT NULL,
-  device_name TEXT,
-  active BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now()
+  device_name  TEXT,
+  active       BOOLEAN DEFAULT true,
+  created_at   TIMESTAMPTZ DEFAULT now()
 );
+
+-- ==========================================
+-- NOTIFICATION PREFERENCES (per user)
+-- ==========================================
 
 CREATE TABLE notification_preferences (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE UNIQUE,
   pwa_enabled BOOLEAN DEFAULT true,
   line_enabled BOOLEAN DEFAULT true,
@@ -433,250 +691,412 @@ CREATE TABLE notification_preferences (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- ==========================================
+-- ANNOUNCEMENTS
+-- ==========================================
+
 CREATE TABLE announcements (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id),
-  title TEXT NOT NULL,
-  body TEXT,
-  image_url TEXT,
-  type TEXT DEFAULT 'promotion',
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id        UUID REFERENCES stores(id),
+  title           TEXT NOT NULL,
+  body            TEXT,
+  image_url       TEXT,
+  type            TEXT DEFAULT 'promotion',
   target_audience TEXT DEFAULT 'customer',
-  start_date TIMESTAMPTZ DEFAULT now(),
-  end_date TIMESTAMPTZ,
-  send_push BOOLEAN DEFAULT false,
-  push_sent_at TIMESTAMPTZ,
-  active BOOLEAN DEFAULT true,
-  created_by UUID REFERENCES profiles(id),
-  created_at TIMESTAMPTZ DEFAULT now()
+  start_date      TIMESTAMPTZ DEFAULT now(),
+  end_date        TIMESTAMPTZ,
+  send_push       BOOLEAN DEFAULT false,
+  push_sent_at    TIMESTAMPTZ,
+  active          BOOLEAN DEFAULT true,
+  created_by      UUID REFERENCES profiles(id),
+  created_at      TIMESTAMPTZ DEFAULT now()
 );
 
 -- ==========================================
--- PRINT QUEUE
+-- PRINT QUEUE + PRINT SERVER STATUS
 -- ==========================================
 
 CREATE TABLE print_queue (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
-  deposit_id UUID REFERENCES deposits(id) ON DELETE SET NULL,
-  job_type print_job_type NOT NULL DEFAULT 'receipt',
-  status print_job_status NOT NULL DEFAULT 'pending',
-  copies INTEGER DEFAULT 1,
-  payload JSONB NOT NULL,
-  requested_by UUID REFERENCES profiles(id),
-  printed_at TIMESTAMPTZ,
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id      UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  deposit_id    UUID REFERENCES deposits(id) ON DELETE SET NULL,
+  job_type      print_job_type NOT NULL DEFAULT 'receipt',
+  status        print_job_status NOT NULL DEFAULT 'pending',
+  copies        INTEGER DEFAULT 1,
+  payload       JSONB NOT NULL,
+  requested_by  UUID REFERENCES profiles(id),
+  printed_at    TIMESTAMPTZ,
   error_message TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at    TIMESTAMPTZ DEFAULT now()
 );
-
--- ==========================================
--- PRINT SERVER STATUS (00013)
--- ==========================================
 
 CREATE TABLE print_server_status (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
-  is_online BOOLEAN DEFAULT false,
-  last_heartbeat TIMESTAMPTZ,
-  server_version TEXT,
-  printer_name TEXT DEFAULT 'POS80',
-  printer_status TEXT DEFAULT 'unknown',
-  hostname TEXT,
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id           UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
+  is_online          BOOLEAN DEFAULT false,
+  last_heartbeat     TIMESTAMPTZ,
+  server_version     TEXT,
+  printer_name       TEXT DEFAULT 'POS80',
+  printer_status     TEXT DEFAULT 'unknown',
+  hostname           TEXT,
   jobs_printed_today INTEGER DEFAULT 0,
-  error_message TEXT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+  error_message      TEXT,
+  created_at         TIMESTAMPTZ DEFAULT now(),
+  updated_at         TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_print_server_status_store ON print_server_status(store_id);
-CREATE INDEX idx_print_queue_store_pending ON print_queue(store_id, created_at ASC) WHERE status = 'pending';
+-- ==========================================
+-- COMMISSION MODULE
+-- ==========================================
+
+CREATE TABLE ae_profiles (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name              TEXT NOT NULL,
+  nickname          TEXT,
+  phone             TEXT,
+  bank_name         TEXT,
+  bank_account_no   TEXT,
+  bank_account_name TEXT,
+  notes             TEXT,
+  is_active         BOOLEAN NOT NULL DEFAULT true,
+  created_by        UUID REFERENCES profiles(id),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE ae_profiles IS
+  'Account Executives (ที่พาลูกค้ามาร้าน). Shared across all stores within a tenant.';
+
+CREATE TABLE commission_payments (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id       UUID NOT NULL REFERENCES stores(id),
+  ae_id          UUID REFERENCES ae_profiles(id),
+  staff_id       UUID REFERENCES profiles(id),
+  type           commission_type NOT NULL,
+  month          TEXT NOT NULL,                    -- YYYY-MM
+  total_entries  INTEGER NOT NULL DEFAULT 0,
+  total_amount   NUMERIC(12,2) NOT NULL DEFAULT 0,
+  slip_photo_url TEXT,
+  notes          TEXT,
+  status         TEXT NOT NULL DEFAULT 'paid'
+                 CHECK (status IN ('paid', 'cancelled')),
+  paid_by        UUID REFERENCES profiles(id),
+  paid_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  cancelled_by   UUID REFERENCES profiles(id),
+  cancelled_at   TIMESTAMPTZ,
+  cancel_reason  TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE commission_entries (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id          UUID NOT NULL REFERENCES stores(id),
+  type              commission_type NOT NULL,
+  ae_id             UUID REFERENCES ae_profiles(id),
+  staff_id          UUID REFERENCES profiles(id),
+
+  bill_date         DATE NOT NULL,
+  receipt_no        TEXT,
+  receipt_photo_url TEXT,
+  table_no          TEXT,
+
+  -- AE commission calculation
+  subtotal_amount   NUMERIC(12,2),
+  commission_rate   NUMERIC(5,4) NOT NULL DEFAULT 0.10,   -- 10%
+  tax_rate          NUMERIC(5,4) NOT NULL DEFAULT 0.03,   -- 3% withholding
+  commission_amount NUMERIC(12,2),
+  tax_amount        NUMERIC(12,2),
+  net_amount        NUMERIC(12,2) NOT NULL,
+
+  -- Bottle commission
+  bottle_count      INTEGER,
+  bottle_rate       NUMERIC(10,2) DEFAULT 500,
+
+  payment_id        UUID REFERENCES commission_payments(id),
+  notes             TEXT,
+  created_by        UUID REFERENCES profiles(id),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- ==========================================
--- ==========================================
--- CHAT TABLES (Phase 1-5)
+-- CHAT TABLES
 -- ==========================================
 
 CREATE TABLE chat_rooms (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  type chat_room_type NOT NULL DEFAULT 'store',
-  is_active BOOLEAN DEFAULT true,
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  store_id       UUID REFERENCES stores(id) ON DELETE CASCADE,
+  name           TEXT NOT NULL,
+  type           chat_room_type NOT NULL DEFAULT 'store',
+  is_active      BOOLEAN DEFAULT true,
   pinned_summary JSONB DEFAULT NULL,
-  avatar_url TEXT DEFAULT NULL,
-  created_by UUID REFERENCES profiles(id) DEFAULT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+  avatar_url     TEXT DEFAULT NULL,
+  created_by     UUID REFERENCES profiles(id) DEFAULT NULL,
+  created_at     TIMESTAMPTZ DEFAULT now(),
+  updated_at     TIMESTAMPTZ DEFAULT now()
 );
 
+COMMENT ON COLUMN chat_rooms.type IS
+  '''cross_store'' = cross-store WITHIN A TENANT only. Cross-tenant rooms are forbidden.';
+
 CREATE TABLE chat_messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  room_id UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
-  sender_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
-  type chat_message_type NOT NULL DEFAULT 'text',
-  content TEXT,
-  metadata JSONB DEFAULT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id     UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  sender_id   UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  type        chat_message_type NOT NULL DEFAULT 'text',
+  content     TEXT,
+  metadata    JSONB DEFAULT NULL,
+  created_at  TIMESTAMPTZ DEFAULT now(),
   archived_at TIMESTAMPTZ DEFAULT NULL
 );
 
 CREATE TABLE chat_members (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  room_id UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  role chat_member_role NOT NULL DEFAULT 'member',
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id      UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  user_id      UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  role         chat_member_role NOT NULL DEFAULT 'member',
   last_read_at TIMESTAMPTZ DEFAULT now(),
-  muted BOOLEAN NOT NULL DEFAULT false,
-  joined_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(room_id, user_id)
+  muted        BOOLEAN NOT NULL DEFAULT false,
+  joined_at    TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (room_id, user_id)
 );
 
 CREATE TABLE chat_pinned_messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  room_id UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id    UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
   message_id UUID NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
-  pinned_by UUID NOT NULL REFERENCES profiles(id),
-  pinned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(room_id, message_id)
+  pinned_by  UUID NOT NULL REFERENCES profiles(id),
+  pinned_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (room_id, message_id)
 );
 
+-- ==========================================
 -- INDEXES
 -- ==========================================
 
+-- --- Tenant identity lookups ---
+CREATE INDEX idx_tenants_slug ON tenants(slug);
+CREATE INDEX idx_tenants_status ON tenants(status);
+CREATE INDEX idx_tenants_owner ON tenants(owner_user_id);
+CREATE INDEX idx_platform_admins_active ON platform_admins(active) WHERE active = true;
+CREATE INDEX idx_tenant_invitations_tenant ON tenant_invitations(tenant_id);
+CREATE INDEX idx_tenant_invitations_email ON tenant_invitations(email);
+CREATE INDEX idx_tenant_invitations_token ON tenant_invitations(token) WHERE accepted_at IS NULL;
+CREATE INDEX idx_tenant_audit_logs_tenant ON tenant_audit_logs(tenant_id, created_at DESC);
+CREATE INDEX idx_tenant_audit_logs_admin ON tenant_audit_logs(platform_admin_id);
+
+-- --- Tenant isolation (CRITICAL for RLS performance) ---
+CREATE INDEX idx_profiles_tenant ON profiles(tenant_id);
+CREATE INDEX idx_profiles_line_user_id ON profiles(line_user_id);
+CREATE INDEX idx_profiles_created_by ON profiles(created_by);
+
+CREATE INDEX idx_stores_tenant ON stores(tenant_id);
+CREATE INDEX idx_stores_manager ON stores(manager_id);
+
+CREATE INDEX idx_user_stores_store ON user_stores(store_id);
+CREATE INDEX idx_user_permissions_tenant ON user_permissions(tenant_id);
+CREATE INDEX idx_user_permissions_granted_by ON user_permissions(granted_by);
+
+-- --- Feature + role config ---
+CREATE INDEX idx_store_features_store ON store_features(store_id);
+CREATE INDEX idx_role_permissions_tenant_role ON role_permissions(tenant_id, role);
+
+-- --- Stock module ---
+CREATE INDEX idx_products_tenant ON products(tenant_id);
+CREATE INDEX idx_products_store_id ON products(store_id);
+CREATE INDEX idx_manual_counts_tenant ON manual_counts(tenant_id);
+CREATE INDEX idx_manual_counts_store_date ON manual_counts(store_id, count_date);
+CREATE INDEX idx_manual_counts_user ON manual_counts(user_id);
+CREATE INDEX idx_ocr_logs_tenant ON ocr_logs(tenant_id);
+CREATE INDEX idx_ocr_logs_store ON ocr_logs(store_id);
+CREATE INDEX idx_comparisons_tenant ON comparisons(tenant_id);
+CREATE INDEX idx_comparisons_store_id ON comparisons(store_id);
+CREATE INDEX idx_comparisons_status ON comparisons(status);
+CREATE INDEX idx_comparisons_approved_by ON comparisons(approved_by);
+CREATE INDEX idx_comparisons_explained_by ON comparisons(explained_by);
+
+-- --- Deposit module ---
+CREATE INDEX idx_deposits_tenant ON deposits(tenant_id);
+CREATE INDEX idx_deposits_tenant_status ON deposits(tenant_id, status);
 CREATE INDEX idx_deposits_store_id ON deposits(store_id);
+CREATE INDEX idx_deposits_store_status ON deposits(store_id, status);
 CREATE INDEX idx_deposits_customer_id ON deposits(customer_id);
 CREATE INDEX idx_deposits_line_user_id ON deposits(line_user_id);
 CREATE INDEX idx_deposits_status ON deposits(status);
 CREATE INDEX idx_deposits_expiry_date ON deposits(expiry_date);
+CREATE INDEX idx_deposits_received_by ON deposits(received_by);
 CREATE INDEX idx_deposits_is_vip ON deposits(is_vip) WHERE is_vip = true;
 CREATE INDEX idx_deposits_is_no_deposit ON deposits(is_no_deposit) WHERE is_no_deposit = true;
+
+CREATE INDEX idx_withdrawals_tenant ON withdrawals(tenant_id);
 CREATE INDEX idx_withdrawals_deposit_id ON withdrawals(deposit_id);
 CREATE INDEX idx_withdrawals_store_id ON withdrawals(store_id);
-CREATE INDEX idx_comparisons_store_id ON comparisons(store_id);
-CREATE INDEX idx_comparisons_status ON comparisons(status);
-CREATE INDEX idx_manual_counts_store_date ON manual_counts(store_id, count_date);
-CREATE INDEX idx_notifications_user_id ON notifications(user_id);
-CREATE INDEX idx_notifications_read ON notifications(user_id, read);
-CREATE INDEX idx_audit_logs_store_id ON audit_logs(store_id);
-CREATE INDEX idx_announcements_store_id ON announcements(store_id);
-CREATE INDEX idx_announcements_active ON announcements(active, start_date, end_date);
-CREATE INDEX idx_profiles_line_user_id ON profiles(line_user_id);
+
+CREATE INDEX idx_deposit_requests_tenant ON deposit_requests(tenant_id);
 CREATE INDEX idx_deposit_requests_store_status ON deposit_requests(store_id, status);
-CREATE INDEX idx_products_store_id ON products(store_id);
-CREATE INDEX idx_hq_deposits_status ON hq_deposits(status);
-CREATE INDEX idx_hq_deposits_from_store ON hq_deposits(from_store_id);
-CREATE INDEX idx_hq_deposits_transfer ON hq_deposits(transfer_id);
-CREATE INDEX idx_borrows_from_store ON borrows(from_store_id);
-CREATE INDEX idx_borrows_to_store ON borrows(to_store_id);
-CREATE INDEX idx_borrows_status ON borrows(status);
-CREATE INDEX idx_borrows_created_at ON borrows(created_at);
-CREATE INDEX idx_borrow_items_borrow ON borrow_items(borrow_id);
-CREATE INDEX idx_stores_line_channel_id ON stores(line_channel_id) WHERE line_channel_id IS NOT NULL;
-CREATE INDEX idx_print_queue_store_status ON print_queue(store_id, status);
-CREATE INDEX idx_print_queue_created_at ON print_queue(created_at);
 
--- ==========================================
--- Chat indexes (00002)
-CREATE INDEX idx_chat_messages_room_created ON chat_messages(room_id, created_at DESC) WHERE archived_at IS NULL;
-CREATE INDEX idx_chat_members_user ON chat_members(user_id);
-CREATE INDEX idx_chat_rooms_store ON chat_rooms(store_id) WHERE is_active = true;
-CREATE INDEX idx_chat_messages_action_cards ON chat_messages((metadata->>'status')) WHERE type = 'action_card' AND archived_at IS NULL;
-
--- Pinned messages index (00005)
-CREATE INDEX idx_chat_pinned_room ON chat_pinned_messages(room_id, pinned_at DESC);
-
--- FK indexes (00008 — performance optimization)
+-- --- Transfer / HQ module ---
+CREATE INDEX idx_transfers_tenant ON transfers(tenant_id);
 CREATE INDEX idx_transfers_from_store ON transfers(from_store_id);
 CREATE INDEX idx_transfers_to_store ON transfers(to_store_id);
 CREATE INDEX idx_transfers_deposit ON transfers(deposit_id);
 CREATE INDEX idx_transfers_confirmed_by ON transfers(confirmed_by);
 CREATE INDEX idx_transfers_requested_by ON transfers(requested_by);
-CREATE INDEX idx_deposits_store_status ON deposits(store_id, status);
-CREATE INDEX idx_deposits_received_by ON deposits(received_by);
-CREATE INDEX idx_ocr_logs_store ON ocr_logs(store_id);
-CREATE INDEX idx_penalties_store ON penalties(store_id);
-CREATE INDEX idx_penalties_staff ON penalties(staff_id);
-CREATE INDEX idx_chat_messages_sender ON chat_messages(sender_id);
-CREATE INDEX idx_chat_rooms_created_by ON chat_rooms(created_by);
-CREATE INDEX idx_chat_pinned_messages_pinned_by ON chat_pinned_messages(pinned_by);
-CREATE INDEX idx_chat_pinned_messages_message ON chat_pinned_messages(message_id);
-CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id);
-CREATE INDEX idx_notifications_store ON notifications(store_id);
+
+CREATE INDEX idx_hq_deposits_tenant ON hq_deposits(tenant_id);
+CREATE INDEX idx_hq_deposits_status ON hq_deposits(status);
+CREATE INDEX idx_hq_deposits_from_store ON hq_deposits(from_store_id);
+CREATE INDEX idx_hq_deposits_transfer ON hq_deposits(transfer_id);
 CREATE INDEX idx_hq_deposits_deposit ON hq_deposits(deposit_id);
 CREATE INDEX idx_hq_deposits_received_by ON hq_deposits(received_by);
 CREATE INDEX idx_hq_deposits_withdrawn_by ON hq_deposits(withdrawn_by);
-CREATE INDEX idx_manual_counts_user ON manual_counts(user_id);
+
+-- --- Borrow module ---
+CREATE INDEX idx_borrows_tenant ON borrows(tenant_id);
+CREATE INDEX idx_borrows_from_store ON borrows(from_store_id);
+CREATE INDEX idx_borrows_to_store ON borrows(to_store_id);
+CREATE INDEX idx_borrows_status ON borrows(status);
+CREATE INDEX idx_borrows_created_at ON borrows(created_at);
 CREATE INDEX idx_borrows_approved_by ON borrows(approved_by);
 CREATE INDEX idx_borrows_requested_by ON borrows(requested_by);
 CREATE INDEX idx_borrows_rejected_by ON borrows(rejected_by);
 CREATE INDEX idx_borrows_cancelled_by ON borrows(cancelled_by);
 CREATE INDEX idx_borrows_borrower_pos ON borrows(borrower_pos_confirmed_by);
 CREATE INDEX idx_borrows_lender_pos ON borrows(lender_pos_confirmed_by);
+CREATE INDEX idx_borrow_items_borrow ON borrow_items(borrow_id);
+
+-- --- Shared tables ---
+CREATE INDEX idx_notifications_tenant ON notifications(tenant_id);
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_notifications_read ON notifications(user_id, read);
+CREATE INDEX idx_notifications_store ON notifications(store_id);
+CREATE INDEX idx_audit_logs_tenant ON audit_logs(tenant_id);
+CREATE INDEX idx_audit_logs_store_id ON audit_logs(store_id);
+CREATE INDEX idx_audit_logs_changed_by ON audit_logs(changed_by);
+CREATE INDEX idx_penalties_tenant ON penalties(tenant_id);
+CREATE INDEX idx_penalties_store ON penalties(store_id);
+CREATE INDEX idx_penalties_staff ON penalties(staff_id);
+CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id);
+CREATE INDEX idx_announcements_tenant ON announcements(tenant_id);
+CREATE INDEX idx_announcements_store_id ON announcements(store_id);
+CREATE INDEX idx_announcements_active ON announcements(active, start_date, end_date);
+CREATE INDEX idx_announcements_created_by ON announcements(created_by);
+
+-- --- Print ---
+CREATE INDEX idx_print_queue_tenant ON print_queue(tenant_id);
+CREATE INDEX idx_print_queue_store_status ON print_queue(store_id, status);
+CREATE INDEX idx_print_queue_store_pending ON print_queue(store_id, created_at ASC) WHERE status = 'pending';
+CREATE INDEX idx_print_queue_created_at ON print_queue(created_at);
 CREATE INDEX idx_print_queue_deposit ON print_queue(deposit_id);
 CREATE INDEX idx_print_queue_requested_by ON print_queue(requested_by);
-CREATE INDEX idx_profiles_created_by ON profiles(created_by);
-CREATE INDEX idx_stores_manager ON stores(manager_id);
-CREATE INDEX idx_announcements_created_by ON announcements(created_by);
-CREATE INDEX idx_audit_logs_changed_by ON audit_logs(changed_by);
-CREATE INDEX idx_user_stores_store ON user_stores(store_id);
-CREATE INDEX idx_user_permissions_granted_by ON user_permissions(granted_by);
-CREATE INDEX idx_comparisons_approved_by ON comparisons(approved_by);
-CREATE INDEX idx_comparisons_explained_by ON comparisons(explained_by);
+CREATE INDEX idx_print_server_status_store ON print_server_status(store_id);
+
+-- --- Commission ---
+CREATE INDEX idx_ae_profiles_tenant ON ae_profiles(tenant_id);
+CREATE INDEX idx_ae_profiles_active ON ae_profiles(is_active);
+CREATE INDEX idx_commission_entries_tenant ON commission_entries(tenant_id);
+CREATE INDEX idx_commission_entries_store_id ON commission_entries(store_id);
+CREATE INDEX idx_commission_entries_ae_id ON commission_entries(ae_id);
+CREATE INDEX idx_commission_entries_bill_date ON commission_entries(bill_date);
+CREATE INDEX idx_commission_entries_type ON commission_entries(type);
+CREATE INDEX idx_commission_entries_store_date ON commission_entries(store_id, bill_date);
+CREATE INDEX idx_commission_entries_payment_id ON commission_entries(payment_id);
+CREATE INDEX idx_commission_payments_tenant ON commission_payments(tenant_id);
+CREATE INDEX idx_commission_payments_store_id ON commission_payments(store_id);
+CREATE INDEX idx_commission_payments_ae_id ON commission_payments(ae_id);
+CREATE INDEX idx_commission_payments_month ON commission_payments(month);
+CREATE INDEX idx_commission_payments_status ON commission_payments(status);
+
+-- --- Chat ---
+CREATE INDEX idx_chat_rooms_tenant ON chat_rooms(tenant_id);
+CREATE INDEX idx_chat_rooms_store ON chat_rooms(store_id) WHERE is_active = true;
+CREATE INDEX idx_chat_rooms_created_by ON chat_rooms(created_by);
+CREATE INDEX idx_chat_messages_room_created ON chat_messages(room_id, created_at DESC) WHERE archived_at IS NULL;
+CREATE INDEX idx_chat_messages_action_cards ON chat_messages((metadata->>'status')) WHERE type = 'action_card' AND archived_at IS NULL;
+CREATE INDEX idx_chat_messages_sender ON chat_messages(sender_id);
+CREATE INDEX idx_chat_members_user ON chat_members(user_id);
+CREATE INDEX idx_chat_pinned_room ON chat_pinned_messages(room_id, pinned_at DESC);
+CREATE INDEX idx_chat_pinned_messages_pinned_by ON chat_pinned_messages(pinned_by);
+CREATE INDEX idx_chat_pinned_messages_message ON chat_pinned_messages(message_id);
 
 -- ==========================================
--- ROW LEVEL SECURITY — Enable on ALL tables
+-- HELPER FUNCTIONS (all SECURITY DEFINER, search_path locked)
 -- ==========================================
 
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_permissions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE stores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_stores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE manual_counts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ocr_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ocr_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE comparisons ENABLE ROW LEVEL SECURITY;
-ALTER TABLE deposits ENABLE ROW LEVEL SECURITY;
-ALTER TABLE withdrawals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE deposit_requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE transfers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE store_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE penalties ENABLE ROW LEVEL SECURITY;
-ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notification_preferences ENABLE ROW LEVEL SECURITY;
-ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE print_queue ENABLE ROW LEVEL SECURITY;
-ALTER TABLE borrows ENABLE ROW LEVEL SECURITY;
-ALTER TABLE borrow_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE hq_deposits ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chat_rooms ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chat_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chat_pinned_messages ENABLE ROW LEVEL SECURITY;
+-- ─── Tenant identity ───
+CREATE OR REPLACE FUNCTION get_user_tenant_id()
+RETURNS UUID AS $$
+  SELECT tenant_id FROM public.profiles WHERE id = auth.uid();
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
 
--- ==========================================
--- HELPER FUNCTIONS (all with SET search_path = '')
--- ==========================================
+CREATE OR REPLACE FUNCTION is_platform_admin()
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.platform_admins
+    WHERE id = auth.uid() AND active = true
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
 
+-- ─── Role checks (within tenant only) ───
 CREATE OR REPLACE FUNCTION get_user_role()
 RETURNS user_role AS $$
   SELECT role FROM public.profiles WHERE id = auth.uid();
 $$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
 
-CREATE OR REPLACE FUNCTION is_admin()
+CREATE OR REPLACE FUNCTION is_tenant_admin()
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
-    SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('owner', 'accountant', 'hq')
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid()
+      AND role IN ('owner', 'accountant', 'hq')
+      AND active = true
   );
 $$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
 
-CREATE OR REPLACE FUNCTION get_user_store_ids()
-RETURNS SETOF UUID AS $$
-  SELECT store_id FROM public.user_stores WHERE user_id = auth.uid();
+-- Backward-compat alias: is_admin() means tenant admin (NOT platform admin)
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN AS $$
+  SELECT public.is_tenant_admin();
 $$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
 
+-- ─── Store scope ───
+CREATE OR REPLACE FUNCTION get_user_store_ids()
+RETURNS SETOF UUID AS $$
+  SELECT us.store_id
+  FROM public.user_stores us
+  JOIN public.stores s ON s.id = us.store_id
+  WHERE us.user_id = auth.uid()
+    AND s.tenant_id = public.get_user_tenant_id();
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+-- ─── Feature + permission resolution ───
+CREATE OR REPLACE FUNCTION is_feature_enabled(p_store_id UUID, p_feature_key TEXT)
+RETURNS BOOLEAN AS $$
+  SELECT COALESCE(
+    (SELECT enabled FROM public.store_features
+       WHERE store_id = p_store_id AND feature_key = p_feature_key),
+    true   -- absent row = enabled by default
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+CREATE OR REPLACE FUNCTION has_role_permission(p_permission_key TEXT)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.role_permissions rp
+    JOIN public.profiles p ON p.tenant_id = rp.tenant_id AND p.role = rp.role
+    WHERE p.id = auth.uid()
+      AND rp.permission_key = p_permission_key
+      AND rp.enabled = true
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
+-- ─── Print server health ───
 CREATE OR REPLACE FUNCTION is_print_server_online(p_store_id UUID)
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
@@ -686,6 +1106,7 @@ RETURNS BOOLEAN AS $$
   );
 $$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public;
 
+-- ─── Chat helpers ───
 CREATE OR REPLACE FUNCTION is_chat_member(p_room_id UUID)
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
@@ -717,164 +1138,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SET search_path = public;
 
--- ==========================================
--- RLS POLICIES (final merged — all auth.uid() optimized)
--- ==========================================
-
--- ========== profiles ==========
-CREATE POLICY "Users view own profile" ON profiles FOR SELECT USING (id = (SELECT auth.uid()));
-CREATE POLICY "Admin view all profiles" ON profiles FOR SELECT USING (is_admin());
-CREATE POLICY "Owner manages profiles" ON profiles FOR ALL USING (get_user_role() = 'owner');
-
--- ========== stores ==========
-CREATE POLICY "Admin see all stores" ON stores FOR SELECT USING (is_admin());
-CREATE POLICY "Users see assigned stores" ON stores FOR SELECT USING (id IN (SELECT get_user_store_ids()));
-CREATE POLICY "Owner manages stores" ON stores FOR ALL USING (get_user_role() = 'owner');
-
--- ========== user_stores ==========
-CREATE POLICY "Users see own assignments" ON user_stores FOR SELECT USING (user_id = (SELECT auth.uid()) OR is_admin());
-CREATE POLICY "Owner manages assignments" ON user_stores FOR ALL USING (get_user_role() = 'owner');
-
--- ========== deposits ==========
-CREATE POLICY "Staff see store deposits" ON deposits FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Customer see own deposits" ON deposits FOR SELECT USING (
-  customer_id = (SELECT auth.uid())
-  OR line_user_id = (SELECT p.line_user_id FROM public.profiles p WHERE p.id = (SELECT auth.uid()))
-);
-CREATE POLICY "Staff manage store deposits" ON deposits FOR ALL USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-
--- ========== withdrawals ==========
-CREATE POLICY "Staff see store withdrawals" ON withdrawals FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Customer see own withdrawals" ON withdrawals FOR SELECT USING (
-  line_user_id = (SELECT p.line_user_id FROM public.profiles p WHERE p.id = (SELECT auth.uid()))
-);
-CREATE POLICY "Staff manage withdrawals" ON withdrawals FOR ALL USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-
--- ========== products ==========
-CREATE POLICY "Staff see store products" ON products FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Admin manage products" ON products FOR ALL USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-
--- ========== comparisons ==========
-CREATE POLICY "Staff see store comparisons" ON comparisons FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Staff manage comparisons" ON comparisons FOR ALL USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-
--- ========== manual_counts ==========
-CREATE POLICY "Staff see store counts" ON manual_counts FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Staff manage counts" ON manual_counts FOR ALL USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-
--- ========== notifications ==========
-CREATE POLICY "Users see own notifications" ON notifications FOR SELECT USING (user_id = (SELECT auth.uid()));
-CREATE POLICY "Users update own notifications" ON notifications FOR UPDATE USING (user_id = (SELECT auth.uid()));
-
--- ========== notification_preferences ==========
-CREATE POLICY "Users see own preferences" ON notification_preferences FOR SELECT USING (user_id = (SELECT auth.uid()));
-CREATE POLICY "Users manage own preferences" ON notification_preferences FOR ALL USING (user_id = (SELECT auth.uid()));
-
--- ========== push_subscriptions ==========
-CREATE POLICY "Users see own subscriptions" ON push_subscriptions FOR SELECT USING (user_id = (SELECT auth.uid()));
-CREATE POLICY "Users manage own subscriptions" ON push_subscriptions FOR ALL USING (user_id = (SELECT auth.uid()));
-
--- ========== announcements ==========
-CREATE POLICY "Anyone see active announcements" ON announcements FOR SELECT USING (active = true AND start_date <= now() AND (end_date IS NULL OR end_date >= now()));
-CREATE POLICY "Owner manage announcements" ON announcements FOR ALL USING (get_user_role() = 'owner');
-
--- ========== store_settings ==========
-CREATE POLICY "Staff see store settings" ON store_settings FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Owner manage settings" ON store_settings FOR ALL USING (get_user_role() = 'owner');
-CREATE POLICY "Manager manage settings" ON store_settings FOR ALL USING (get_user_role() = 'manager');
-
--- ========== transfers ==========
-CREATE POLICY "Staff see store transfers" ON transfers FOR SELECT USING (from_store_id IN (SELECT get_user_store_ids()) OR to_store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Staff manage transfers" ON transfers FOR ALL USING (from_store_id IN (SELECT get_user_store_ids()) OR to_store_id IN (SELECT get_user_store_ids()) OR is_admin());
-
--- ========== penalties ==========
-CREATE POLICY "Staff see store penalties" ON penalties FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Admin manage penalties" ON penalties FOR ALL USING (is_admin());
-
--- ========== user_permissions ==========
-CREATE POLICY "Users see own permissions" ON user_permissions FOR SELECT USING (user_id = (SELECT auth.uid()) OR is_admin());
-CREATE POLICY "Owner manage permissions" ON user_permissions FOR ALL USING (get_user_role() = 'owner');
-
--- ========== ocr ==========
-CREATE POLICY "Staff see store ocr_logs" ON ocr_logs FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Staff manage ocr_logs" ON ocr_logs FOR ALL USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Staff see ocr_items" ON ocr_items FOR SELECT USING (ocr_log_id IN (SELECT id FROM public.ocr_logs WHERE store_id IN (SELECT get_user_store_ids())) OR is_admin());
-CREATE POLICY "Staff manage ocr_items" ON ocr_items FOR ALL USING (ocr_log_id IN (SELECT id FROM public.ocr_logs WHERE store_id IN (SELECT get_user_store_ids())) OR is_admin());
-
--- ========== deposit_requests ==========
-CREATE POLICY "Staff see store deposit_requests" ON deposit_requests FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Authenticated insert deposit_requests" ON deposit_requests FOR INSERT WITH CHECK ((SELECT auth.uid()) IS NOT NULL);
-CREATE POLICY "Staff manage deposit_requests" ON deposit_requests FOR UPDATE USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-
--- ========== audit_logs ==========
-CREATE POLICY "Admin see audit_logs" ON audit_logs FOR SELECT USING (is_admin());
-
--- ========== app_settings ==========
-CREATE POLICY "Admin read app_settings" ON app_settings FOR SELECT USING (is_admin());
-CREATE POLICY "Admin write app_settings" ON app_settings FOR ALL USING (is_admin());
-
--- ========== print_queue ==========
-CREATE POLICY "Staff see store print jobs" ON print_queue FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Staff manage print jobs" ON print_queue FOR ALL USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-
-ALTER TABLE print_server_status ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Staff see store print server status" ON print_server_status FOR SELECT USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Staff manage print server status" ON print_server_status FOR ALL USING (store_id IN (SELECT get_user_store_ids()) OR is_admin());
-
--- ========== borrows ==========
-CREATE POLICY "Staff see related borrows" ON borrows FOR SELECT USING (from_store_id IN (SELECT get_user_store_ids()) OR to_store_id IN (SELECT get_user_store_ids()) OR is_admin());
-CREATE POLICY "Staff manage related borrows" ON borrows FOR ALL USING (from_store_id IN (SELECT get_user_store_ids()) OR to_store_id IN (SELECT get_user_store_ids()) OR is_admin());
-
--- ========== borrow_items ==========
-CREATE POLICY "Staff see borrow items" ON borrow_items FOR SELECT USING (borrow_id IN (SELECT id FROM public.borrows WHERE from_store_id IN (SELECT get_user_store_ids()) OR to_store_id IN (SELECT get_user_store_ids())) OR is_admin());
-CREATE POLICY "Staff manage borrow items" ON borrow_items FOR ALL USING (borrow_id IN (SELECT id FROM public.borrows WHERE from_store_id IN (SELECT get_user_store_ids()) OR to_store_id IN (SELECT get_user_store_ids())) OR is_admin());
-
--- ========== hq_deposits ==========
-CREATE POLICY "HQ and admin see hq_deposits" ON hq_deposits FOR SELECT USING (is_admin());
-CREATE POLICY "HQ and admin manage hq_deposits" ON hq_deposits FOR ALL USING (is_admin());
-
--- ========== chat_rooms ==========
-CREATE POLICY "Members see their chat rooms" ON chat_rooms FOR SELECT USING (is_chat_member(id) OR is_admin());
-CREATE POLICY "Authenticated users can create rooms" ON chat_rooms FOR INSERT WITH CHECK ((SELECT auth.uid()) IS NOT NULL);
-CREATE POLICY "Admins can update rooms" ON chat_rooms FOR UPDATE
-  USING (EXISTS (SELECT 1 FROM public.chat_members WHERE chat_members.room_id = chat_rooms.id AND chat_members.user_id = (SELECT auth.uid()) AND chat_members.role = 'admin'))
-  WITH CHECK (EXISTS (SELECT 1 FROM public.chat_members WHERE chat_members.room_id = chat_rooms.id AND chat_members.user_id = (SELECT auth.uid()) AND chat_members.role = 'admin'));
-
--- ========== chat_messages ==========
-CREATE POLICY "Members see chat messages" ON chat_messages FOR SELECT USING (is_chat_member(room_id) OR is_admin());
-CREATE POLICY "Members send chat messages" ON chat_messages FOR INSERT WITH CHECK (sender_id = (SELECT auth.uid()) AND is_chat_member(room_id));
-CREATE POLICY "Members update action cards" ON chat_messages FOR UPDATE USING (type = 'action_card' AND is_chat_member(room_id));
-
--- ========== chat_members ==========
-CREATE POLICY "Members see co-members" ON chat_members FOR SELECT USING (is_chat_member(room_id) OR is_admin());
-CREATE POLICY "Members update own read status" ON chat_members FOR UPDATE USING (user_id = (SELECT auth.uid()));
-CREATE POLICY "Members can update own membership" ON chat_members FOR UPDATE USING (user_id = (SELECT auth.uid())) WITH CHECK (user_id = (SELECT auth.uid()));
-CREATE POLICY "Managers manage chat members" ON chat_members FOR ALL USING (get_user_role() IN ('owner', 'manager'));
-CREATE POLICY "Admins can add members" ON chat_members FOR INSERT WITH CHECK (
-  (EXISTS (SELECT 1 FROM public.chat_members cm WHERE cm.room_id = chat_members.room_id AND cm.user_id = (SELECT auth.uid()) AND cm.role = 'admin'))
-  OR user_id = (SELECT auth.uid())
-);
-CREATE POLICY "Admins can remove members" ON chat_members FOR DELETE USING (
-  EXISTS (SELECT 1 FROM public.chat_members cm WHERE cm.room_id = chat_members.room_id AND cm.user_id = (SELECT auth.uid()) AND cm.role = 'admin')
-);
-
--- ========== chat_pinned_messages ==========
-CREATE POLICY "Members can view pinned messages" ON chat_pinned_messages FOR SELECT USING (is_chat_member(room_id));
-CREATE POLICY "Admins can pin messages" ON chat_pinned_messages FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM public.chat_members WHERE chat_members.room_id = chat_pinned_messages.room_id AND chat_members.user_id = (SELECT auth.uid()) AND (
-    chat_members.role = 'admin' OR EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = (SELECT auth.uid()) AND profiles.role IN ('owner', 'manager'))
-  ))
-);
-CREATE POLICY "Admins can unpin messages" ON chat_pinned_messages FOR DELETE USING (
-  EXISTS (SELECT 1 FROM public.chat_members WHERE chat_members.room_id = chat_pinned_messages.room_id AND chat_members.user_id = (SELECT auth.uid()) AND (
-    chat_members.role = 'admin' OR EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = (SELECT auth.uid()) AND profiles.role IN ('owner', 'manager'))
-  ))
-);
-
--- ==========================================
--- CHAT FUNCTIONS (final versions from 00002+00003, with search_path)
--- ==========================================
-
 CREATE OR REPLACE FUNCTION insert_bot_message(
   p_room_id UUID, p_type chat_message_type, p_content TEXT, p_metadata JSONB DEFAULT NULL
 ) RETURNS UUID AS $$
@@ -887,10 +1150,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
-CREATE OR REPLACE FUNCTION claim_action_card(
-  p_message_id UUID,
-  p_user_id UUID
-)
+CREATE OR REPLACE FUNCTION claim_action_card(p_message_id UUID, p_user_id UUID)
 RETURNS JSONB AS $$
 DECLARE
   v_msg public.chat_messages;
@@ -898,13 +1158,8 @@ DECLARE
   v_profile RECORD;
 BEGIN
   SELECT * INTO v_msg FROM public.chat_messages WHERE id = p_message_id;
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Message not found');
-  END IF;
-
-  IF v_msg.type != 'action_card' THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Not an action card');
-  END IF;
+  IF NOT FOUND THEN RETURN jsonb_build_object('success', false, 'error', 'Message not found'); END IF;
+  IF v_msg.type != 'action_card' THEN RETURN jsonb_build_object('success', false, 'error', 'Not an action card'); END IF;
 
   v_meta := v_msg.metadata;
 
@@ -918,44 +1173,33 @@ BEGIN
       'claimed_by', v_meta->>'claimed_by_name');
   END IF;
 
-  SELECT display_name, username INTO v_profile
-  FROM public.profiles WHERE id = p_user_id;
+  SELECT display_name, username INTO v_profile FROM public.profiles WHERE id = p_user_id;
 
-  v_meta := v_meta
-    || jsonb_build_object(
-      'status', 'claimed',
-      'claimed_by', p_user_id,
-      'claimed_by_name', COALESCE(v_profile.display_name, v_profile.username),
-      'claimed_at', now(),
-      'auto_released', null,
-      'auto_released_at', null
-    );
+  v_meta := v_meta || jsonb_build_object(
+    'status', 'claimed',
+    'claimed_by', p_user_id,
+    'claimed_by_name', COALESCE(v_profile.display_name, v_profile.username),
+    'claimed_at', now(),
+    'auto_released', null,
+    'auto_released_at', null
+  );
 
   UPDATE public.chat_messages SET metadata = v_meta WHERE id = p_message_id;
-
   RETURN jsonb_build_object('success', true, 'metadata', v_meta);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-
 CREATE OR REPLACE FUNCTION complete_action_card(
-  p_message_id UUID,
-  p_user_id UUID,
-  p_notes TEXT DEFAULT NULL,
-  p_photo_url TEXT DEFAULT NULL
-)
-RETURNS JSONB AS $$
+  p_message_id UUID, p_user_id UUID, p_notes TEXT DEFAULT NULL, p_photo_url TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
 DECLARE
   v_msg public.chat_messages;
   v_meta JSONB;
 BEGIN
   SELECT * INTO v_msg FROM public.chat_messages WHERE id = p_message_id;
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Message not found');
-  END IF;
+  IF NOT FOUND THEN RETURN jsonb_build_object('success', false, 'error', 'Message not found'); END IF;
 
   v_meta := v_msg.metadata;
-
   IF v_meta->>'status' != 'claimed' THEN
     RETURN jsonb_build_object('success', false, 'error', 'Not in claimed status');
   END IF;
@@ -971,34 +1215,26 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'error', 'Not claimed by you');
   END IF;
 
-  v_meta := v_meta
-    || jsonb_build_object(
-      'status', 'completed',
-      'completed_at', now(),
-      'completion_notes', p_notes,
-      'confirmation_photo_url', p_photo_url
-    );
+  v_meta := v_meta || jsonb_build_object(
+    'status', 'completed',
+    'completed_at', now(),
+    'completion_notes', p_notes,
+    'confirmation_photo_url', p_photo_url
+  );
 
   UPDATE public.chat_messages SET metadata = v_meta WHERE id = p_message_id;
-
   RETURN jsonb_build_object('success', true, 'metadata', v_meta);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-
-CREATE OR REPLACE FUNCTION release_action_card(
-  p_message_id UUID,
-  p_user_id UUID
-)
+CREATE OR REPLACE FUNCTION release_action_card(p_message_id UUID, p_user_id UUID)
 RETURNS JSONB AS $$
 DECLARE
   v_msg public.chat_messages;
   v_meta JSONB;
 BEGIN
   SELECT * INTO v_msg FROM public.chat_messages WHERE id = p_message_id;
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Message not found');
-  END IF;
+  IF NOT FOUND THEN RETURN jsonb_build_object('success', false, 'error', 'Message not found'); END IF;
 
   v_meta := v_msg.metadata;
 
@@ -1012,20 +1248,17 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'error', 'Not claimed by you');
   END IF;
 
-  -- Restore to pending_bar if _bar_step is set, otherwise pending
-  v_meta := v_meta
-    || jsonb_build_object(
-      'status', CASE WHEN (v_meta->>'_bar_step')::boolean IS TRUE THEN 'pending_bar' ELSE 'pending' END,
-      'claimed_by', null,
-      'claimed_by_name', null,
-      'claimed_at', null,
-      'released_by', p_user_id,
-      'released_at', now(),
-      '_bar_step', null
-    );
+  v_meta := v_meta || jsonb_build_object(
+    'status', CASE WHEN (v_meta->>'_bar_step')::boolean IS TRUE THEN 'pending_bar' ELSE 'pending' END,
+    'claimed_by', null,
+    'claimed_by_name', null,
+    'claimed_at', null,
+    'released_by', p_user_id,
+    'released_at', now(),
+    '_bar_step', null
+  );
 
   UPDATE public.chat_messages SET metadata = v_meta WHERE id = p_message_id;
-
   RETURN jsonb_build_object('success', true, 'metadata', v_meta);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -1041,41 +1274,209 @@ RETURNS TABLE(room_id UUID, unread_count BIGINT) AS $$
   GROUP BY cm.room_id;
 $$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
 
+-- ==========================================
+-- TRIGGER FUNCTIONS
+-- ==========================================
+
+-- ─── Branch limit enforcement ───
+CREATE OR REPLACE FUNCTION enforce_tenant_branch_limit()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_max   INTEGER;
+  v_count INTEGER;
+BEGIN
+  SELECT max_branches INTO v_max FROM public.tenants WHERE id = NEW.tenant_id;
+  IF v_max IS NULL THEN
+    RAISE EXCEPTION 'Store must belong to a valid tenant (tenant_id=%)', NEW.tenant_id;
+  END IF;
+
+  SELECT COUNT(*) INTO v_count
+  FROM public.stores
+  WHERE tenant_id = NEW.tenant_id
+    AND active = true
+    AND id IS DISTINCT FROM NEW.id;       -- exclude self on UPDATE
+
+  IF v_count >= v_max THEN
+    RAISE EXCEPTION 'Branch limit reached for tenant % (max=%). Upgrade plan to add more.',
+      NEW.tenant_id, v_max USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER trg_stores_enforce_branch_limit_insert
+  BEFORE INSERT ON stores
+  FOR EACH ROW WHEN (NEW.active = true)
+  EXECUTE FUNCTION enforce_tenant_branch_limit();
+
+CREATE TRIGGER trg_stores_enforce_branch_limit_update
+  BEFORE UPDATE ON stores
+  FOR EACH ROW WHEN (OLD.active = false AND NEW.active = true)
+  EXECUTE FUNCTION enforce_tenant_branch_limit();
+
+-- ─── tenant_id ↔ store_id consistency ───
+-- Auto-fills tenant_id from store_id if NULL, raises if mismatched.
+CREATE OR REPLACE FUNCTION enforce_tenant_store_consistency()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_tenant UUID;
+BEGIN
+  SELECT tenant_id INTO v_tenant FROM public.stores WHERE id = NEW.store_id;
+  IF v_tenant IS NULL THEN
+    RAISE EXCEPTION 'Invalid store_id %: store not found', NEW.store_id;
+  END IF;
+
+  IF NEW.tenant_id IS NULL THEN
+    NEW.tenant_id := v_tenant;
+  ELSIF NEW.tenant_id != v_tenant THEN
+    RAISE EXCEPTION 'tenant_id mismatch: row tenant=% but store belongs to tenant=%',
+      NEW.tenant_id, v_tenant;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER trg_products_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON products
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_manual_counts_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON manual_counts
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_ocr_logs_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON ocr_logs
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_comparisons_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON comparisons
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_deposits_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON deposits
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_withdrawals_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON withdrawals
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_deposit_requests_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON deposit_requests
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_print_queue_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON print_queue
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_announcements_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON announcements
+  FOR EACH ROW WHEN (NEW.store_id IS NOT NULL)
+  EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_commission_entries_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON commission_entries
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+CREATE TRIGGER trg_commission_payments_tenant_consistency
+  BEFORE INSERT OR UPDATE OF store_id, tenant_id ON commission_payments
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
+
+-- ─── Cross-tenant transfer/borrow guard ───
+CREATE OR REPLACE FUNCTION enforce_within_tenant_pair()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_from_tenant UUID;
+  v_to_tenant   UUID;
+BEGIN
+  SELECT tenant_id INTO v_from_tenant FROM public.stores WHERE id = NEW.from_store_id;
+  SELECT tenant_id INTO v_to_tenant   FROM public.stores WHERE id = NEW.to_store_id;
+  IF v_from_tenant IS NULL OR v_to_tenant IS NULL THEN
+    RAISE EXCEPTION 'Invalid from_store_id or to_store_id';
+  END IF;
+  IF v_from_tenant != v_to_tenant THEN
+    RAISE EXCEPTION 'Cross-tenant operations are forbidden (from=%, to=%)', v_from_tenant, v_to_tenant;
+  END IF;
+  IF NEW.tenant_id IS NULL THEN
+    NEW.tenant_id := v_from_tenant;
+  ELSIF NEW.tenant_id != v_from_tenant THEN
+    RAISE EXCEPTION 'tenant_id mismatch with store pair (rows tenant=%, stores tenant=%)',
+      NEW.tenant_id, v_from_tenant;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER trg_transfers_within_tenant
+  BEFORE INSERT OR UPDATE OF from_store_id, to_store_id, tenant_id ON transfers
+  FOR EACH ROW EXECUTE FUNCTION enforce_within_tenant_pair();
+CREATE TRIGGER trg_borrows_within_tenant
+  BEFORE INSERT OR UPDATE OF from_store_id, to_store_id, tenant_id ON borrows
+  FOR EACH ROW EXECUTE FUNCTION enforce_within_tenant_pair();
+
+-- ─── Auth user creation ───
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
-  _username TEXT;
-  _role user_role;
+  _username   TEXT;
+  _role       user_role;
+  _tenant_id  UUID;
+  _invitation RECORD;
 BEGIN
-  -- ดึง username จาก metadata หรือ email หรือสร้างจาก UUID
+  -- Path 1: Platform admin (metadata flag set)
+  IF NEW.raw_user_meta_data->>'is_platform_admin' = 'true' THEN
+    INSERT INTO public.platform_admins (id, email, display_name, role)
+    VALUES (
+      NEW.id,
+      NEW.email,
+      COALESCE(NEW.raw_user_meta_data->>'display_name', NEW.email),
+      COALESCE((NEW.raw_user_meta_data->>'admin_role')::platform_admin_role, 'admin')
+    )
+    ON CONFLICT (id) DO NOTHING;
+    RETURN NEW;
+  END IF;
+
+  -- Path 2: Tenant user — must specify tenant_id OR carry an invitation_token
+  _tenant_id := NULLIF(NEW.raw_user_meta_data->>'tenant_id', '')::uuid;
+
+  IF _tenant_id IS NULL AND NEW.raw_user_meta_data ? 'invitation_token' THEN
+    SELECT tenant_id, role INTO _invitation
+    FROM public.tenant_invitations
+    WHERE token = NEW.raw_user_meta_data->>'invitation_token'
+      AND accepted_at IS NULL
+      AND expires_at > now();
+    IF FOUND THEN
+      _tenant_id := _invitation.tenant_id;
+      _role := _invitation.role;
+    END IF;
+  END IF;
+
+  IF _tenant_id IS NULL THEN
+    -- Orphan user (no tenant) — allow auth to succeed; profile must be assigned later
+    RAISE WARNING 'handle_new_user: user % created without tenant_id', NEW.id;
+    RETURN NEW;
+  END IF;
+
+  -- Username: from metadata, fallback to email, fallback to UUID-derived
   _username := COALESCE(
     NULLIF(TRIM(NEW.raw_user_meta_data->>'username'), ''),
     NULLIF(TRIM(NEW.email), ''),
     'user_' || REPLACE(NEW.id::TEXT, '-', '')
   );
 
-  -- ถ้า username ซ้ำ ให้ต่อท้ายด้วย 6 ตัวแรกของ UUID
-  IF EXISTS (SELECT 1 FROM public.profiles WHERE username = _username) THEN
+  IF EXISTS (SELECT 1 FROM public.profiles
+             WHERE tenant_id = _tenant_id AND username = _username) THEN
     _username := _username || '_' || SUBSTR(REPLACE(NEW.id::TEXT, '-', ''), 1, 6);
   END IF;
 
-  -- แปลง role จาก metadata (ถ้า invalid ให้ใช้ 'staff')
-  BEGIN
-    _role := COALESCE(
-      NULLIF(TRIM(NEW.raw_user_meta_data->>'role'), '')::user_role,
-      'staff'
-    );
-  EXCEPTION WHEN invalid_text_representation OR others THEN
-    _role := 'staff';
-  END;
+  -- Role: from invitation > metadata > default 'staff'
+  IF _role IS NULL THEN
+    BEGIN
+      _role := COALESCE(
+        NULLIF(TRIM(NEW.raw_user_meta_data->>'role'), '')::user_role,
+        'staff'
+      );
+    EXCEPTION WHEN others THEN _role := 'staff';
+    END;
+  END IF;
 
-  INSERT INTO public.profiles (id, username, role)
-  VALUES (NEW.id, _username, _role);
+  INSERT INTO public.profiles (id, tenant_id, username, role)
+  VALUES (NEW.id, _tenant_id, _username, _role);
 
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
-  -- Log error แต่ไม่ block การสร้าง auth user
-  RAISE WARNING 'handle_new_user: failed to create profile for user % — %', NEW.id, SQLERRM;
+  RAISE WARNING 'handle_new_user: failed for user % — %', NEW.id, SQLERRM;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -1084,23 +1485,21 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
--- ==========================================
--- เมื่อสร้าง store ใหม่ → สร้างห้องแชทสาขาอัตโนมัติ
+-- ─── Auto-create chat room when store is created ───
 CREATE OR REPLACE FUNCTION create_store_chat_room()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.chat_rooms (store_id, name, type)
-  VALUES (NEW.id, NEW.store_name || ' — แชท', 'store');
+  INSERT INTO public.chat_rooms (tenant_id, store_id, name, type)
+  VALUES (NEW.tenant_id, NEW.id, NEW.store_name || ' — แชท', 'store');
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE TRIGGER trg_store_create_chat_room
   AFTER INSERT ON stores
-  FOR EACH ROW
-  EXECUTE FUNCTION create_store_chat_room();
+  FOR EACH ROW EXECUTE FUNCTION create_store_chat_room();
 
--- เมื่อเพิ่ม user เข้า store → เพิ่มเข้าห้องแชทสาขาอัตโนมัติ
+-- ─── Add user to store chat room when assigned ───
 CREATE OR REPLACE FUNCTION add_user_to_store_chat()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -1113,14 +1512,12 @@ BEGIN
   ON CONFLICT (room_id, user_id) DO NOTHING;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE TRIGGER trg_user_store_add_chat
   AFTER INSERT ON user_stores
-  FOR EACH ROW
-  EXECUTE FUNCTION add_user_to_store_chat();
+  FOR EACH ROW EXECUTE FUNCTION add_user_to_store_chat();
 
--- เมื่อลบ user ออกจาก store → ลบออกจากห้องแชทสาขาด้วย
 CREATE OR REPLACE FUNCTION remove_user_from_store_chat()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -1132,14 +1529,611 @@ BEGIN
     );
   RETURN OLD;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE TRIGGER trg_user_store_remove_chat
   AFTER DELETE ON user_stores
-  FOR EACH ROW
-  EXECUTE FUNCTION remove_user_from_store_chat();
+  FOR EACH ROW EXECUTE FUNCTION remove_user_from_store_chat();
 
--- REALTIME: Enable for key tables
+-- ─── system_settings: auto-update updated_at ───
+CREATE OR REPLACE FUNCTION system_settings_touch_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER system_settings_updated_at
+  BEFORE UPDATE ON system_settings
+  FOR EACH ROW EXECUTE FUNCTION system_settings_touch_updated_at();
+
+-- ==========================================
+-- ROW LEVEL SECURITY — enable on every table
+-- ==========================================
+
+ALTER TABLE tenants              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_admins      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_permissions     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stores               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_stores          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_invitations   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_audit_logs    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE store_features       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE role_permissions     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE manual_counts        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ocr_logs             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ocr_items            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comparisons          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deposits             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE withdrawals          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deposit_requests     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transfers            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hq_deposits          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE borrows              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE borrow_items         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE store_settings       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_settings      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE penalties            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE push_subscriptions   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notification_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE announcements        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE print_queue          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE print_server_status  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ae_profiles          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE commission_entries   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE commission_payments  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_rooms           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_members         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_pinned_messages ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================
+-- RLS POLICIES
+--
+-- Policy pattern (ALL tenant tables):
+--   Layer 1: tenant_id = get_user_tenant_id()      ← mandatory isolation
+--   Layer 2: store_id IN (get_user_store_ids())   ← scope (if applicable)
+--   Layer 3: is_tenant_admin() bypass             ← admin within tenant
+--
+-- Platform admins get explicit SELECT-only policies.
+-- ==========================================
+
+-- ========== tenants ==========
+CREATE POLICY "Tenant members see own tenant" ON tenants
+  FOR SELECT USING (id = get_user_tenant_id());
+CREATE POLICY "Platform admin sees all tenants" ON tenants
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Platform admin manages tenants" ON tenants
+  FOR ALL USING (is_platform_admin()) WITH CHECK (is_platform_admin());
+CREATE POLICY "Tenant owner updates own tenant" ON tenants
+  FOR UPDATE USING (id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (id = get_user_tenant_id());
+
+-- ========== platform_admins ==========
+CREATE POLICY "Platform admins see each other" ON platform_admins
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Super admin manages platform admins" ON platform_admins
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.platform_admins
+            WHERE id = (SELECT auth.uid()) AND role = 'super_admin' AND active = true)
+  );
+
+-- ========== profiles ==========
+CREATE POLICY "Users view own profile" ON profiles
+  FOR SELECT USING (id = (SELECT auth.uid()));
+CREATE POLICY "Tenant members view tenant profiles" ON profiles
+  FOR SELECT USING (tenant_id = get_user_tenant_id());
+CREATE POLICY "Platform admin views all profiles" ON profiles
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Owner manages tenant profiles" ON profiles
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== user_permissions ==========
+CREATE POLICY "Users see own permissions" ON user_permissions
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (user_id = (SELECT auth.uid()) OR is_tenant_admin())
+  );
+CREATE POLICY "Owner manages permissions" ON user_permissions
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== stores ==========
+CREATE POLICY "Tenant members see tenant stores" ON stores
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Platform admin sees all stores" ON stores
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Tenant owner manages stores" ON stores
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== user_stores ==========
+CREATE POLICY "Users see own store assignments" ON user_stores
+  FOR SELECT USING (
+    user_id = (SELECT auth.uid())
+    OR (store_id IN (SELECT id FROM public.stores WHERE tenant_id = get_user_tenant_id()) AND is_tenant_admin())
+  );
+CREATE POLICY "Owner manages store assignments" ON user_stores
+  FOR ALL USING (
+    get_user_role() = 'owner'
+    AND store_id IN (SELECT id FROM public.stores WHERE tenant_id = get_user_tenant_id())
+  );
+
+-- ========== tenant_invitations ==========
+CREATE POLICY "Tenant admins see invitations" ON tenant_invitations
+  FOR SELECT USING (tenant_id = get_user_tenant_id() AND is_tenant_admin());
+CREATE POLICY "Tenant owner manages invitations" ON tenant_invitations
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== tenant_audit_logs ==========
+CREATE POLICY "Platform admin sees tenant audit logs" ON tenant_audit_logs
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Platform admin writes tenant audit logs" ON tenant_audit_logs
+  FOR INSERT WITH CHECK (is_platform_admin());
+
+-- ========== store_features ==========
+CREATE POLICY "Tenant members see store features" ON store_features
+  FOR SELECT USING (
+    store_id IN (SELECT id FROM public.stores WHERE tenant_id = get_user_tenant_id())
+  );
+CREATE POLICY "Tenant owner manages store features" ON store_features
+  FOR ALL USING (
+    get_user_role() = 'owner'
+    AND store_id IN (SELECT id FROM public.stores WHERE tenant_id = get_user_tenant_id())
+  );
+
+-- ========== role_permissions ==========
+CREATE POLICY "Tenant members see role permissions" ON role_permissions
+  FOR SELECT USING (tenant_id = get_user_tenant_id());
+CREATE POLICY "Tenant owner manages role permissions" ON role_permissions
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== products ==========
+CREATE POLICY "Tenant staff see products" ON products
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage products" ON products
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== manual_counts ==========
+CREATE POLICY "Tenant staff see counts" ON manual_counts
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage counts" ON manual_counts
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== comparisons ==========
+CREATE POLICY "Tenant staff see comparisons" ON comparisons
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage comparisons" ON comparisons
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== ocr ==========
+CREATE POLICY "Tenant staff see ocr_logs" ON ocr_logs
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage ocr_logs" ON ocr_logs
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+CREATE POLICY "Tenant staff see ocr_items" ON ocr_items
+  FOR SELECT USING (
+    ocr_log_id IN (
+      SELECT id FROM public.ocr_logs
+      WHERE tenant_id = get_user_tenant_id()
+        AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+    )
+  );
+CREATE POLICY "Tenant staff manage ocr_items" ON ocr_items
+  FOR ALL USING (
+    ocr_log_id IN (
+      SELECT id FROM public.ocr_logs
+      WHERE tenant_id = get_user_tenant_id()
+        AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+    )
+  );
+
+-- ========== deposits ==========
+CREATE POLICY "Tenant staff see deposits" ON deposits
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant customer sees own deposits" ON deposits
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (
+      customer_id = (SELECT auth.uid())
+      OR line_user_id = (SELECT p.line_user_id FROM public.profiles p WHERE p.id = (SELECT auth.uid()))
+    )
+  );
+CREATE POLICY "Tenant staff manage deposits" ON deposits
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== withdrawals ==========
+CREATE POLICY "Tenant staff see withdrawals" ON withdrawals
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant customer sees own withdrawals" ON withdrawals
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND line_user_id = (SELECT p.line_user_id FROM public.profiles p WHERE p.id = (SELECT auth.uid()))
+  );
+CREATE POLICY "Tenant staff manage withdrawals" ON withdrawals
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== deposit_requests ==========
+CREATE POLICY "Tenant staff see deposit_requests" ON deposit_requests
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Authenticated insert deposit_requests" ON deposit_requests
+  FOR INSERT WITH CHECK (
+    (SELECT auth.uid()) IS NOT NULL
+    AND tenant_id = get_user_tenant_id()
+  );
+CREATE POLICY "Tenant staff update deposit_requests" ON deposit_requests
+  FOR UPDATE USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+
+-- ========== transfers ==========
+CREATE POLICY "Tenant staff see transfers" ON transfers
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (
+      from_store_id IN (SELECT get_user_store_ids())
+      OR to_store_id IN (SELECT get_user_store_ids())
+      OR is_tenant_admin()
+    )
+  );
+CREATE POLICY "Tenant staff manage transfers" ON transfers
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (
+      from_store_id IN (SELECT get_user_store_ids())
+      OR to_store_id IN (SELECT get_user_store_ids())
+      OR is_tenant_admin()
+    )
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== hq_deposits ==========
+CREATE POLICY "Tenant admin sees hq_deposits" ON hq_deposits
+  FOR SELECT USING (tenant_id = get_user_tenant_id() AND is_tenant_admin());
+CREATE POLICY "Tenant admin manages hq_deposits" ON hq_deposits
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND is_tenant_admin())
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== borrows ==========
+CREATE POLICY "Tenant staff see borrows" ON borrows
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (
+      from_store_id IN (SELECT get_user_store_ids())
+      OR to_store_id IN (SELECT get_user_store_ids())
+      OR is_tenant_admin()
+    )
+  );
+CREATE POLICY "Tenant staff manage borrows" ON borrows
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (
+      from_store_id IN (SELECT get_user_store_ids())
+      OR to_store_id IN (SELECT get_user_store_ids())
+      OR is_tenant_admin()
+    )
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== borrow_items ==========
+CREATE POLICY "Tenant staff see borrow_items" ON borrow_items
+  FOR SELECT USING (
+    borrow_id IN (
+      SELECT id FROM public.borrows
+      WHERE tenant_id = get_user_tenant_id()
+        AND (
+          from_store_id IN (SELECT get_user_store_ids())
+          OR to_store_id IN (SELECT get_user_store_ids())
+          OR is_tenant_admin()
+        )
+    )
+  );
+CREATE POLICY "Tenant staff manage borrow_items" ON borrow_items
+  FOR ALL USING (
+    borrow_id IN (
+      SELECT id FROM public.borrows
+      WHERE tenant_id = get_user_tenant_id()
+        AND (
+          from_store_id IN (SELECT get_user_store_ids())
+          OR to_store_id IN (SELECT get_user_store_ids())
+          OR is_tenant_admin()
+        )
+    )
+  );
+
+-- ========== store_settings ==========
+CREATE POLICY "Tenant staff see store_settings" ON store_settings
+  FOR SELECT USING (
+    store_id IN (
+      SELECT id FROM public.stores
+      WHERE tenant_id = get_user_tenant_id()
+        AND (id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+    )
+  );
+CREATE POLICY "Tenant owner/manager manages store_settings" ON store_settings
+  FOR ALL USING (
+    get_user_role() IN ('owner', 'manager')
+    AND store_id IN (SELECT id FROM public.stores WHERE tenant_id = get_user_tenant_id())
+  );
+
+-- ========== app_settings (platform admin only) ==========
+CREATE POLICY "Platform admin reads app_settings" ON app_settings
+  FOR SELECT USING (is_platform_admin());
+CREATE POLICY "Platform admin writes app_settings" ON app_settings
+  FOR ALL USING (is_platform_admin()) WITH CHECK (is_platform_admin());
+
+-- ========== system_settings (per tenant) ==========
+CREATE POLICY "Tenant members read system_settings" ON system_settings
+  FOR SELECT USING (tenant_id = get_user_tenant_id());
+CREATE POLICY "Tenant owner writes system_settings" ON system_settings
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== audit_logs ==========
+CREATE POLICY "Tenant admin sees audit_logs" ON audit_logs
+  FOR SELECT USING (tenant_id = get_user_tenant_id() AND is_tenant_admin());
+
+-- ========== notifications ==========
+CREATE POLICY "Users see own notifications" ON notifications
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id() AND user_id = (SELECT auth.uid())
+  );
+CREATE POLICY "Users update own notifications" ON notifications
+  FOR UPDATE USING (
+    tenant_id = get_user_tenant_id() AND user_id = (SELECT auth.uid())
+  );
+
+-- ========== penalties ==========
+CREATE POLICY "Tenant staff see penalties" ON penalties
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant admin manages penalties" ON penalties
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND is_tenant_admin())
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== push_subscriptions ==========
+CREATE POLICY "Users manage own subscriptions" ON push_subscriptions
+  FOR ALL USING (user_id = (SELECT auth.uid()));
+
+-- ========== notification_preferences ==========
+CREATE POLICY "Users manage own preferences" ON notification_preferences
+  FOR ALL USING (user_id = (SELECT auth.uid()));
+
+-- ========== announcements ==========
+CREATE POLICY "Tenant members see active announcements" ON announcements
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND active = true
+    AND start_date <= now()
+    AND (end_date IS NULL OR end_date >= now())
+  );
+CREATE POLICY "Tenant owner manages announcements" ON announcements
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== print_queue ==========
+CREATE POLICY "Tenant staff see print jobs" ON print_queue
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage print jobs" ON print_queue
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== print_server_status ==========
+CREATE POLICY "Tenant staff see print server status" ON print_server_status
+  FOR SELECT USING (
+    store_id IN (
+      SELECT id FROM public.stores
+      WHERE tenant_id = get_user_tenant_id()
+        AND (id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+    )
+  );
+CREATE POLICY "Tenant staff manage print server status" ON print_server_status
+  FOR ALL USING (
+    store_id IN (
+      SELECT id FROM public.stores
+      WHERE tenant_id = get_user_tenant_id()
+        AND (id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+    )
+  );
+
+-- ========== ae_profiles ==========
+CREATE POLICY "Tenant members see ae_profiles" ON ae_profiles
+  FOR SELECT USING (tenant_id = get_user_tenant_id());
+CREATE POLICY "Tenant admin manages ae_profiles" ON ae_profiles
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND is_tenant_admin())
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== commission_entries ==========
+CREATE POLICY "Tenant staff see commission_entries" ON commission_entries
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant staff manage commission_entries" ON commission_entries
+  FOR ALL USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  )
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== commission_payments ==========
+CREATE POLICY "Tenant staff see commission_payments" ON commission_payments
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (store_id IN (SELECT get_user_store_ids()) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant admin manages commission_payments" ON commission_payments
+  FOR ALL USING (tenant_id = get_user_tenant_id() AND is_tenant_admin())
+  WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== chat_rooms ==========
+CREATE POLICY "Tenant members see chat rooms" ON chat_rooms
+  FOR SELECT USING (
+    tenant_id = get_user_tenant_id()
+    AND (is_chat_member(id) OR is_tenant_admin())
+  );
+CREATE POLICY "Tenant users create chat rooms" ON chat_rooms
+  FOR INSERT WITH CHECK (
+    tenant_id = get_user_tenant_id() AND (SELECT auth.uid()) IS NOT NULL
+  );
+CREATE POLICY "Chat admins update rooms" ON chat_rooms
+  FOR UPDATE USING (
+    tenant_id = get_user_tenant_id()
+    AND EXISTS (
+      SELECT 1 FROM public.chat_members
+      WHERE chat_members.room_id = chat_rooms.id
+        AND chat_members.user_id = (SELECT auth.uid())
+        AND chat_members.role = 'admin'
+    )
+  ) WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== chat_messages ==========
+CREATE POLICY "Members see chat messages" ON chat_messages
+  FOR SELECT USING (
+    room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+    AND (is_chat_member(room_id) OR is_tenant_admin())
+  );
+CREATE POLICY "Members send chat messages" ON chat_messages
+  FOR INSERT WITH CHECK (
+    sender_id = (SELECT auth.uid())
+    AND is_chat_member(room_id)
+    AND room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+  );
+CREATE POLICY "Members update action cards" ON chat_messages
+  FOR UPDATE USING (type = 'action_card' AND is_chat_member(room_id));
+
+-- ========== chat_members ==========
+CREATE POLICY "Members see co-members" ON chat_members
+  FOR SELECT USING (
+    room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+    AND (is_chat_member(room_id) OR is_tenant_admin())
+  );
+CREATE POLICY "Members update own membership" ON chat_members
+  FOR UPDATE USING (user_id = (SELECT auth.uid()))
+  WITH CHECK (user_id = (SELECT auth.uid()));
+CREATE POLICY "Owner/manager manages chat members" ON chat_members
+  FOR ALL USING (
+    get_user_role() IN ('owner', 'manager')
+    AND room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+  );
+CREATE POLICY "Chat admins add members" ON chat_members
+  FOR INSERT WITH CHECK (
+    room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+    AND (
+      EXISTS (
+        SELECT 1 FROM public.chat_members cm
+        WHERE cm.room_id = chat_members.room_id
+          AND cm.user_id = (SELECT auth.uid())
+          AND cm.role = 'admin'
+      )
+      OR user_id = (SELECT auth.uid())
+    )
+  );
+CREATE POLICY "Chat admins remove members" ON chat_members
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM public.chat_members cm
+      WHERE cm.room_id = chat_members.room_id
+        AND cm.user_id = (SELECT auth.uid())
+        AND cm.role = 'admin'
+    )
+  );
+
+-- ========== chat_pinned_messages ==========
+CREATE POLICY "Members view pinned messages" ON chat_pinned_messages
+  FOR SELECT USING (
+    room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+    AND is_chat_member(room_id)
+  );
+CREATE POLICY "Chat admins pin messages" ON chat_pinned_messages
+  FOR INSERT WITH CHECK (
+    room_id IN (SELECT id FROM public.chat_rooms WHERE tenant_id = get_user_tenant_id())
+    AND EXISTS (
+      SELECT 1 FROM public.chat_members
+      WHERE chat_members.room_id = chat_pinned_messages.room_id
+        AND chat_members.user_id = (SELECT auth.uid())
+        AND (chat_members.role = 'admin' OR get_user_role() IN ('owner', 'manager'))
+    )
+  );
+CREATE POLICY "Chat admins unpin messages" ON chat_pinned_messages
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM public.chat_members
+      WHERE chat_members.room_id = chat_pinned_messages.room_id
+        AND chat_members.user_id = (SELECT auth.uid())
+        AND (chat_members.role = 'admin' OR get_user_role() IN ('owner', 'manager'))
+    )
+  );
+
+-- ==========================================
+-- REALTIME PUBLICATION — client must filter by tenant_id=eq.{x}
 -- ==========================================
 
 ALTER PUBLICATION supabase_realtime ADD TABLE deposits;
@@ -1154,125 +2148,208 @@ ALTER PUBLICATION supabase_realtime ADD TABLE borrows;
 ALTER PUBLICATION supabase_realtime ADD TABLE manual_counts;
 
 -- ==========================================
--- APP SETTINGS: Central bot config
+-- SUPABASE STORAGE — deposit-photos bucket
+-- Path convention: {tenant_id}/{store_id}/{deposit_id}/{filename}
 -- ==========================================
 
-INSERT INTO app_settings (key, value, type, description) VALUES
-  ('LINE_CENTRAL_TOKEN', '', 'secret', 'LINE Channel Access Token สำหรับ bot กลาง'),
-  ('LINE_CENTRAL_GROUP_ID', '', 'string', 'LINE Group ID ของกลุ่มคลังกลาง'),
-  ('LINE_CENTRAL_CHANNEL_SECRET', '', 'secret', 'LINE Channel Secret สำหรับ verify webhook signature'),
-  ('OWNER_GROUP_LINE_ID', '', 'string', 'LINE Group ID ของกลุ่ม owner/admin สำหรับแจ้งเตือนผลต่างสต๊อก')
-ON CONFLICT (key) DO NOTHING;
-
--- ==========================================
--- SYSTEM SETTINGS: DAVIS Ai Central Config (from 00018)
---
--- Global key-value store separate from app_settings, used for:
---   - davis_ai.bot_name        — display name shown in UI
---   - davis_ai.liff_id         — ONE shared LIFF id (replaces NEXT_PUBLIC_LIFF_ID env)
---                                URL format: liff.line.me/{liff_id}?store={store_code}
---   - davis_ai.webhook_note    — optional UI instructions
---
--- Per-store LINE credentials continue to live in `stores.line_token`
--- / `line_channel_id` / `line_channel_secret` (entered via per-store UI).
--- ==========================================
-
-CREATE TABLE IF NOT EXISTS system_settings (
-  key         TEXT PRIMARY KEY,
-  value       TEXT,
-  description TEXT,
-  updated_at  TIMESTAMPTZ DEFAULT now(),
-  updated_by  UUID REFERENCES profiles(id)
-);
-
-COMMENT ON TABLE system_settings IS
-  'Global key-value settings (DAVIS Ai central bot config, feature flags, etc.)';
-
--- Seed default rows
-INSERT INTO system_settings (key, value, description)
-VALUES
-  ('davis_ai.bot_name',     'DAVIS Ai', 'Display name for the central bot (shown in UI)'),
-  ('davis_ai.liff_id',      '',         'LIFF ID ที่ใช้ร่วมกันทุกสาขา — ใส่ ?store=storeCode ใน URL เพื่อระบุสาขา'),
-  ('davis_ai.webhook_note', '',         'Extra note shown on DAVIS Ai settings page (optional)')
-ON CONFLICT (key) DO NOTHING;
-
--- RLS — owner only can read/write
-ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "owner_read_system_settings"
-  ON system_settings FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'owner'
-    )
-  );
-
-CREATE POLICY "owner_write_system_settings"
-  ON system_settings FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'owner'
-    )
-  )
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'owner'
-    )
-  );
-
--- Trigger: auto-update updated_at
-CREATE OR REPLACE FUNCTION system_settings_touch_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS system_settings_updated_at ON system_settings;
-CREATE TRIGGER system_settings_updated_at
-  BEFORE UPDATE ON system_settings
-  FOR EACH ROW
-  EXECUTE FUNCTION system_settings_touch_updated_at();
-
--- ==========================================
--- SUPABASE STORAGE: Bucket สำหรับรูปฝากเหล้า
--- ==========================================
-
-INSERT INTO storage.buckets (id, name, public) VALUES ('deposit-photos', 'deposit-photos', true)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('deposit-photos', 'deposit-photos', true)
 ON CONFLICT (id) DO NOTHING;
 
--- RLS: authenticated users สามารถอัปโหลดได้
-CREATE POLICY "Authenticated users can upload deposit photos"
-ON storage.objects FOR INSERT
-TO authenticated
-WITH CHECK (bucket_id = 'deposit-photos');
+-- Upload: authenticated user can upload only to their own tenant's folder
+CREATE POLICY "Tenant users upload to own tenant folder"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'deposit-photos'
+    AND (storage.foldername(name))[1] = public.get_user_tenant_id()::text
+  );
 
--- RLS: ทุกคนดูได้ (public bucket สำหรับ LINE Flex)
-CREATE POLICY "Public read access for deposit photos"
-ON storage.objects FOR SELECT
-TO public
-USING (bucket_id = 'deposit-photos');
+-- Read: keep public read for now (LINE Flex requires unauthenticated URLs)
+-- TODO: migrate to signed URLs once LINE send pipeline is updated
+CREATE POLICY "Public read deposit-photos (LINE compatibility)"
+  ON storage.objects FOR SELECT TO public
+  USING (bucket_id = 'deposit-photos');
+
+-- Delete: only tenant admins of owning tenant
+CREATE POLICY "Tenant admin deletes own tenant photos"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (
+    bucket_id = 'deposit-photos'
+    AND (storage.foldername(name))[1] = public.get_user_tenant_id()::text
+    AND public.is_tenant_admin()
+  );
 
 -- ==========================================
--- SEED: Chat rooms for existing stores
+-- SEED: default role_permissions per tenant
 -- ==========================================
+-- Seeds the starter permission matrix whenever a new tenant is created.
+-- Owner can later override via UI.
 
-INSERT INTO public.chat_rooms (store_id, name, type)
-SELECT s.id, s.store_name || ' — แชท', 'store'
-FROM stores s
-WHERE s.active = true
-  AND NOT EXISTS (SELECT 1 FROM chat_rooms cr WHERE cr.store_id = s.id AND cr.type = 'store');
+CREATE OR REPLACE FUNCTION seed_role_permissions_for_tenant(p_tenant_id UUID)
+RETURNS void AS $$
+DECLARE
+  r RECORD;
+  v_rows TEXT[][] := ARRAY[
+    -- Owner: everything
+    ARRAY['owner', 'deposits.view'], ARRAY['owner', 'deposits.manage'],
+    ARRAY['owner', 'withdrawals.view'], ARRAY['owner', 'withdrawals.manage'],
+    ARRAY['owner', 'stock.view'], ARRAY['owner', 'stock.count'], ARRAY['owner', 'stock.approve'],
+    ARRAY['owner', 'transfer.view'], ARRAY['owner', 'transfer.manage'],
+    ARRAY['owner', 'borrow.view'], ARRAY['owner', 'borrow.manage'],
+    ARRAY['owner', 'hq.view'], ARRAY['owner', 'hq.manage'],
+    ARRAY['owner', 'commission.view'], ARRAY['owner', 'commission.manage'],
+    ARRAY['owner', 'reports.view'], ARRAY['owner', 'settings.manage'],
+    ARRAY['owner', 'users.invite'], ARRAY['owner', 'users.manage'],
+    ARRAY['owner', 'chat.use'], ARRAY['owner', 'chat.admin'],
+    ARRAY['owner', 'announcements.manage'], ARRAY['owner', 'penalties.manage'],
 
-INSERT INTO chat_members (room_id, user_id, role)
-SELECT cr.id, us.user_id, 'member'
-FROM user_stores us
-JOIN chat_rooms cr ON cr.store_id = us.store_id AND cr.type = 'store'
-WHERE cr.is_active = true
-ON CONFLICT (room_id, user_id) DO NOTHING;
+    -- Accountant: reports, commission, deposits view
+    ARRAY['accountant', 'deposits.view'], ARRAY['accountant', 'withdrawals.view'],
+    ARRAY['accountant', 'stock.view'], ARRAY['accountant', 'reports.view'],
+    ARRAY['accountant', 'commission.view'], ARRAY['accountant', 'commission.manage'],
+    ARRAY['accountant', 'penalties.manage'], ARRAY['accountant', 'chat.use'],
+
+    -- Manager: store ops
+    ARRAY['manager', 'deposits.view'], ARRAY['manager', 'deposits.manage'],
+    ARRAY['manager', 'withdrawals.view'], ARRAY['manager', 'withdrawals.manage'],
+    ARRAY['manager', 'stock.view'], ARRAY['manager', 'stock.count'], ARRAY['manager', 'stock.approve'],
+    ARRAY['manager', 'transfer.view'], ARRAY['manager', 'transfer.manage'],
+    ARRAY['manager', 'borrow.view'], ARRAY['manager', 'borrow.manage'],
+    ARRAY['manager', 'reports.view'], ARRAY['manager', 'settings.manage'],
+    ARRAY['manager', 'chat.use'], ARRAY['manager', 'chat.admin'],
+
+    -- Bar: bar confirm + deposits
+    ARRAY['bar', 'deposits.view'], ARRAY['bar', 'deposits.manage'],
+    ARRAY['bar', 'withdrawals.view'], ARRAY['bar', 'withdrawals.manage'],
+    ARRAY['bar', 'stock.view'], ARRAY['bar', 'chat.use'],
+
+    -- Staff: basic ops
+    ARRAY['staff', 'deposits.view'], ARRAY['staff', 'deposits.manage'],
+    ARRAY['staff', 'withdrawals.view'], ARRAY['staff', 'stock.view'],
+    ARRAY['staff', 'stock.count'], ARRAY['staff', 'chat.use'],
+
+    -- HQ: central warehouse
+    ARRAY['hq', 'hq.view'], ARRAY['hq', 'hq.manage'],
+    ARRAY['hq', 'transfer.view'], ARRAY['hq', 'transfer.manage'],
+    ARRAY['hq', 'deposits.view'], ARRAY['hq', 'stock.view'],
+    ARRAY['hq', 'reports.view'], ARRAY['hq', 'chat.use'],
+
+    -- Customer: self-service
+    ARRAY['customer', 'deposits.view'], ARRAY['customer', 'withdrawals.view']
+  ];
+  v_row TEXT[];
+BEGIN
+  FOREACH v_row SLICE 1 IN ARRAY v_rows LOOP
+    INSERT INTO public.role_permissions (tenant_id, role, permission_key, enabled)
+    VALUES (p_tenant_id, v_row[1]::user_role, v_row[2], true)
+    ON CONFLICT (tenant_id, role, permission_key) DO NOTHING;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+-- Auto-seed on tenant creation
+CREATE OR REPLACE FUNCTION trigger_seed_role_permissions()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM public.seed_role_permissions_for_tenant(NEW.id);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER trg_tenants_seed_permissions
+  AFTER INSERT ON tenants
+  FOR EACH ROW EXECUTE FUNCTION trigger_seed_role_permissions();
+
+-- ==========================================
+-- SEED: default tenant for dev / legacy
+-- ==========================================
+-- In production, a platform admin will create tenants via UI.
+-- This default is included so a fresh install is immediately usable.
+
+INSERT INTO tenants (
+  id, slug, company_name, contact_email,
+  status, plan, max_branches, max_users,
+  line_mode, trial_ends_at
+) VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'default',
+  'Default Company',
+  'admin@example.com',
+  'active',
+  'enterprise',
+  100,
+  1000,
+  'per_store',
+  NULL
+) ON CONFLICT (id) DO NOTHING;
+
+-- Seed default app_settings (platform-level)
+INSERT INTO app_settings (key, value, type, description) VALUES
+  ('maintenance_mode', 'false', 'bool', 'Global maintenance mode flag'),
+  ('signup_enabled',   'true',  'bool', 'Allow new tenant signups (otherwise invitation-only)')
+ON CONFLICT (key) DO NOTHING;
+
+-- Seed default system_settings for the default tenant
+INSERT INTO system_settings (tenant_id, key, value, description) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'bot.display_name', 'DAVIS Ai', 'Display name of the tenant bot in UI'),
+  ('00000000-0000-0000-0000-000000000001', 'bot.webhook_note', '',         'Extra note shown on the LINE settings page')
+ON CONFLICT (tenant_id, key) DO NOTHING;
+
+-- ==========================================
+-- SEED: super-admin bootstrap
+-- ==========================================
+-- When a user signs up via Supabase Auth with this email, the
+-- handle_new_user trigger will detect raw_user_meta_data.is_platform_admin
+-- and provision them into platform_admins. As a backstop, this script
+-- also auto-promotes the user if they sign up WITHOUT the metadata flag.
+--
+-- ⚠️  CHANGE THIS EMAIL BEFORE DEPLOYING TO PRODUCTION.
+
+CREATE OR REPLACE FUNCTION bootstrap_super_admin_by_email(p_email TEXT)
+RETURNS void AS $$
+DECLARE
+  v_uid UUID;
+BEGIN
+  SELECT id INTO v_uid FROM auth.users WHERE email = p_email LIMIT 1;
+  IF v_uid IS NULL THEN
+    RAISE NOTICE 'bootstrap_super_admin: no auth user yet for %, will be promoted on first sign-up', p_email;
+    RETURN;
+  END IF;
+  INSERT INTO public.platform_admins (id, email, display_name, role, active)
+  VALUES (v_uid, p_email, 'Super Admin', 'super_admin', true)
+  ON CONFLICT (id) DO UPDATE SET role = 'super_admin', active = true;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Trigger that promotes matching sign-ups even if metadata flag is missing
+CREATE OR REPLACE FUNCTION auto_promote_super_admin()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_super_email TEXT := 'kpcrmv4@gmail.com';   -- ⚠️ CHANGE ME
+BEGIN
+  IF NEW.email = v_super_email THEN
+    INSERT INTO public.platform_admins (id, email, display_name, role, active)
+    VALUES (NEW.id, NEW.email, 'Super Admin', 'super_admin', true)
+    ON CONFLICT (id) DO UPDATE SET role = 'super_admin', active = true;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER on_auth_user_created_super_admin
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION auto_promote_super_admin();
+
+-- Try to promote now (no-op if user hasn't signed up yet)
+SELECT bootstrap_super_admin_by_email('kpcrmv4@gmail.com');
+
+-- ==========================================
+-- SEED: default tenant role_permissions
+-- Trigger above fires on INSERT; call explicitly for default tenant
+-- in case the trigger does not fire on conflict.
+-- ==========================================
+SELECT seed_role_permissions_for_tenant('00000000-0000-0000-0000-000000000001');
+
+-- ==========================================
+-- END OF SCHEMA (Phases A–G complete)
+-- ==========================================

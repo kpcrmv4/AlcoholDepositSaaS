@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useAppStore } from '@/stores/app-store';
 import { yesterdayBangkok, dayOfWeekBangkok } from '@/lib/utils/date';
 import { cn } from '@/lib/utils/cn';
+import { useTenantPath } from '@/lib/tenant';
 import { ClipboardCheck, ClipboardList, CalendarOff } from 'lucide-react';
 
 type BannerState =
@@ -19,6 +20,8 @@ export function StockCountBanner() {
   const t = useTranslations('stock');
   const { currentStoreId } = useAppStore();
   const [state, setState] = useState<BannerState>({ type: 'loading' });
+  const tenantPath = useTenantPath();
+  const dailyCheckHref = tenantPath('/stock/daily-check');
 
   const check = useCallback(async () => {
     if (!currentStoreId) return;
@@ -98,7 +101,7 @@ export function StockCountBanner() {
   if (state.type === 'not_counted') {
     return (
       <a
-        href="/stock/daily-check"
+        href={dailyCheckHref}
         className={cn(
           'flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors',
           'border-amber-200 bg-amber-50 hover:bg-amber-100',
@@ -128,7 +131,7 @@ export function StockCountBanner() {
 
   return (
     <a
-      href="/stock/daily-check"
+      href={dailyCheckHref}
       className={cn(
         'flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors',
         isComplete

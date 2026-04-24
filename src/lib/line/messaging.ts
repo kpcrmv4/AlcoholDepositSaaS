@@ -263,26 +263,107 @@ export function createFlexMessage(
 }
 
 // ---------------------------------------------------------------------------
-// Store config helpers (internal)
+// Store config helpers (internal) — tenant-aware
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve the effective LINE config for a store.
+ *
+ * Resolution order (SaaS multi-tenant):
+ *   • tenant.line_mode = 'tenant'    → always use tenant.line_channel_*
+ *   • tenant.line_mode = 'per_store' → use store.line_* if populated,
+ *                                       else fall back to tenant.line_*
+ *
+ * Group IDs (stock/deposit/bar_notify_group_id) are ALWAYS per-store
+ * regardless of line_mode — a tenant may run a single OA but still have
+ * distinct staff groups per branch.
+ *
+ * Returns null when neither the tenant nor the store has a usable token.
+ */
 async function getStoreLineConfig(storeId: string): Promise<StoreLineConfig | null> {
   try {
     const supabase = createServiceClient();
-    const { data, error } = await supabase
+    const { data: store, error: storeErr } = await supabase
       .from('stores')
-      .select('line_token, line_channel_id, line_channel_secret, stock_notify_group_id, deposit_notify_group_id, bar_notify_group_id')
+      .select(
+        'tenant_id, line_token, line_channel_id, line_channel_secret, ' +
+        'stock_notify_group_id, deposit_notify_group_id, bar_notify_group_id',
+      )
       .eq('id', storeId)
       .single();
 
-    if (error || !data) {
-      console.error('[LINE] Failed to fetch store config:', error?.message);
+    if (storeErr || !store) {
+      console.error('[LINE] Failed to fetch store config:', storeErr?.message);
       return null;
     }
 
-    return data as StoreLineConfig;
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select('line_mode, line_token:line_channel_token, line_channel_id, line_channel_secret')
+      .eq('id', store.tenant_id)
+      .maybeSingle();
+
+    const useTenantConfig =
+      tenant?.line_mode === 'tenant' ||
+      (!store.line_token && !!tenant?.line_token);
+
+    const resolved: StoreLineConfig = useTenantConfig
+      ? {
+          line_token: (tenant as any)?.line_token ?? null,
+          line_channel_id: tenant?.line_channel_id ?? null,
+          line_channel_secret: tenant?.line_channel_secret ?? null,
+          stock_notify_group_id: store.stock_notify_group_id,
+          deposit_notify_group_id: store.deposit_notify_group_id,
+          bar_notify_group_id: store.bar_notify_group_id,
+        }
+      : {
+          line_token: store.line_token,
+          line_channel_id: store.line_channel_id,
+          line_channel_secret: store.line_channel_secret,
+          stock_notify_group_id: store.stock_notify_group_id,
+          deposit_notify_group_id: store.deposit_notify_group_id,
+          bar_notify_group_id: store.bar_notify_group_id,
+        };
+
+    return resolved;
   } catch (error) {
     console.error('[LINE] getStoreLineConfig error:', error);
+    return null;
+  }
+}
+
+/**
+ * Resolve LINE config by tenant_id directly (no store context). Used by
+ * flows that target a whole tenant (tenant-wide broadcast) or that only
+ * know the tenant at call time.
+ */
+export async function getTenantLineConfig(tenantId: string): Promise<{
+  token: string | null;
+  channelId: string | null;
+  channelSecret: string | null;
+  ownerGroupId: string | null;
+} | null> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('line_channel_token, line_channel_id, line_channel_secret, line_owner_group_id')
+      .eq('id', tenantId)
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error('[LINE] Failed to fetch tenant LINE config:', error?.message);
+      return null;
+    }
+
+    return {
+      token: data.line_channel_token ?? null,
+      channelId: data.line_channel_id ?? null,
+      channelSecret: data.line_channel_secret ?? null,
+      ownerGroupId: data.line_owner_group_id ?? null,
+    };
+  } catch (error) {
+    console.error('[LINE] getTenantLineConfig error:', error);
     return null;
   }
 }
