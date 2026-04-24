@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { requireTenantContext } from '@/lib/tenant';
+import { requireTenantContext } from '@/lib/tenant/server';
 import { invalidateTenantLiffIdCache } from '@/lib/line/customer-entry-url';
 
 /**

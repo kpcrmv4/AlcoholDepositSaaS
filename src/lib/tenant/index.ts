@@ -1,3 +1,8 @@
+// Client-safe tenant exports.
+// Server-only helpers (guard, resolve) live at '@/lib/tenant/server' so that
+// importing anything from here does NOT pull in `next/headers` via the
+// Supabase server client — which would break Turbopack client bundles.
+
 export type {
   Tenant,
   TenantWithSecrets,
@@ -10,21 +15,10 @@ export type {
 } from './types';
 
 export {
-  resolveTenantBySlug,
-  resolveTenantById,
-  resolveTenantByLineChannelId,
-  resolveTenantByLiffId,
-  resolveTenantForCurrentUser,
   extractTenantSlugFromPath,
   extractTenantSlugFromHost,
   isTenantActive,
-} from './resolve';
-
-export {
-  requireTenantContext,
-  requireTenantContextForSlug,
-  requirePlatformAdmin,
-} from './guard';
+} from './resolve-client';
 
 export { TenantProvider, useTenant, useTenantMaybe } from './context';
 export { useTenantPath, useTenantSlug } from './use-tenant-path';

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { requirePlatformAdmin } from '@/lib/tenant';
+import { requirePlatformAdmin } from '@/lib/tenant/server';
 
 /**
  * GET /api/platform/usage

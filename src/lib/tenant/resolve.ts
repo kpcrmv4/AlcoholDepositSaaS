@@ -108,32 +108,11 @@ export async function resolveTenantForCurrentUser(userId: string): Promise<Tenan
   return resolveTenantById(profile.tenant_id as string);
 }
 
-/**
- * Extract a `/t/{slug}/...` prefix from a URL pathname.
- * Returns the slug or null if the path isn't tenant-scoped.
- */
-export function extractTenantSlugFromPath(pathname: string): string | null {
-  const m = pathname.match(/^\/t\/([^/]+)(?:\/|$)/);
-  return m?.[1] ?? null;
-}
-
-/**
- * Extract a `{slug}.example.com` subdomain from a hostname.
- * Returns null if not running on a multi-tenant subdomain.
- */
-export function extractTenantSlugFromHost(host: string | null): string | null {
-  if (!host) return null;
-  const parts = host.split(':')[0].split('.');
-  if (parts.length < 3) return null;                    // no subdomain
-  const sub = parts[0];
-  if (['www', 'app', 'admin', 'api', 'liff'].includes(sub)) return null;
-  return sub;
-}
-
-export function isTenantActive(tenant: Tenant): boolean {
-  if (tenant.status === 'suspended' || tenant.status === 'cancelled') return false;
-  if (tenant.status === 'trial' && tenant.trial_ends_at) {
-    return new Date(tenant.trial_ends_at).getTime() > Date.now();
-  }
-  return true;
-}
+// Pure helpers (extractTenantSlugFromPath, extractTenantSlugFromHost,
+// isTenantActive) have moved to ./resolve-client.ts so they can be safely
+// used from Client Components without pulling in the Supabase server client.
+export {
+  extractTenantSlugFromPath,
+  extractTenantSlugFromHost,
+  isTenantActive,
+} from './resolve-client';

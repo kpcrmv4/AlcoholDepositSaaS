@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { createServiceClient } from '@/lib/supabase/server';
-import { requireTenantContext } from '@/lib/tenant';
+import { requireTenantContext } from '@/lib/tenant/server';
 
 export async function GET() {
   const g = await requireTenantContext();
