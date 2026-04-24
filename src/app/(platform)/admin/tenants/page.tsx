@@ -8,6 +8,19 @@ interface SearchParams {
   status?: string;
 }
 
+interface TenantRow {
+  id: string;
+  slug: string;
+  company_name: string;
+  contact_email: string;
+  status: string;
+  plan: string;
+  max_branches: number;
+  max_users: number;
+  trial_ends_at: string | null;
+  created_at: string;
+}
+
 const STATUS_STYLES: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-800',
   trial: 'bg-sky-100 text-sky-800',
@@ -38,18 +51,20 @@ export default async function TenantsPage({
   }
   if (status) query = query.eq('status', status);
 
-  const { data: tenants } = await query;
+  const { data } = await query;
+  const tenants = (data ?? []) as unknown as TenantRow[];
 
   // Branch counts
-  const ids = (tenants ?? []).map((t) => t.id);
+  const ids = tenants.map((t) => t.id);
   const branchCounts = new Map<string, number>();
   if (ids.length > 0) {
-    const { data } = await supabase
+    const { data: rows } = await supabase
       .from('stores')
       .select('tenant_id')
       .in('tenant_id', ids)
       .eq('active', true);
-    (data ?? []).forEach((s) => {
+    const storeRows = (rows ?? []) as unknown as Array<{ tenant_id: string }>;
+    storeRows.forEach((s) => {
       branchCounts.set(s.tenant_id, (branchCounts.get(s.tenant_id) ?? 0) + 1);
     });
   }
@@ -106,7 +121,7 @@ export default async function TenantsPage({
             </tr>
           </thead>
           <tbody>
-            {(tenants ?? []).map((t) => (
+            {tenants.map((t) => (
               <tr
                 key={t.id}
                 className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -141,7 +156,7 @@ export default async function TenantsPage({
                 </td>
               </tr>
             ))}
-            {(tenants ?? []).length === 0 && (
+            {tenants.length === 0 && (
               <tr>
                 <td
                   colSpan={6}
