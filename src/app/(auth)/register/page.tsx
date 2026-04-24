@@ -8,6 +8,7 @@ import { UserPlus, Eye, EyeOff, Loader2, CheckCircle } from 'lucide-react';
 
 export default function RegisterPage() {
   const t = useTranslations('auth');
+  const tCommon = useTranslations('common');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -169,7 +170,7 @@ export default function RegisterPage() {
           className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
           {t('displayName')}{' '}
-          <span className="font-normal text-gray-400">({t('optional', { ns: 'common' })})</span>
+          <span className="font-normal text-gray-400">({tCommon('optional')})</span>
         </label>
         <input
           id="displayName"
