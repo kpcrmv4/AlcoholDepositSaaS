@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
   const storeName = storesData?.store_name || '';
 
   // 2. Create auth user via admin API (auto-confirms email)
-  const email = `${username.trim().toLowerCase()}@stockmanager.app`;
+  const email = `${username.trim().toLowerCase()}@cellarlyos.app`;
   const { data: authData, error: authError } = await serviceClient.auth.admin.createUser({
     email,
     password,

@@ -4,7 +4,7 @@
   "STORE_ID": "your-store-uuid",
   "STORE_NAME": "Branch Name",
   "STORE_CODE": "BRN",
-  "PRINT_ACCOUNT_EMAIL": "printer-brn@stockmanager.app",
+  "PRINT_ACCOUNT_EMAIL": "printer-brn@cellarlyos.app",
   "PRINT_ACCOUNT_PASSWORD": "auto-generated-password",
   "PRINTER_NAME": "POS80",
   "PAPER_WIDTH": 80,

@@ -35,7 +35,7 @@ export default function LoginPage() {
     try {
       const supabase = createClient();
       const trimmed = identifier.trim().toLowerCase();
-      const email = trimmed.includes('@') ? trimmed : `${trimmed}@stockmanager.app`;
+      const email = trimmed.includes('@') ? trimmed : `${trimmed}@cellarlyos.app`;
 
       const { error: authError } = await supabase.auth.signInWithPassword({
         email,

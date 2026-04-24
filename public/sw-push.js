@@ -1,5 +1,5 @@
 /**
- * Service Worker Push Event Handler for StockManager PWA
+ * Service Worker Push Event Handler for CellarlyOS PWA
  *
  * This file handles push notification events independently.
  * It can be imported by the main service worker via importScripts('./sw-push.js')
@@ -15,12 +15,12 @@ self.addEventListener('push', function (event) {
   } catch (e) {
     // If JSON parsing fails, treat the data as plain text
     payload = {
-      title: 'StockManager',
+      title: 'CellarlyOS',
       body: event.data ? event.data.text() : '',
     };
   }
 
-  const title = payload.title || 'StockManager';
+  const title = payload.title || 'CellarlyOS';
 
   const options = {
     body: payload.body || '',
@@ -28,7 +28,7 @@ self.addEventListener('push', function (event) {
     badge: payload.badge || '/icons/badge-72x72.png',
     image: payload.image || undefined,
     vibrate: [100, 50, 100],
-    tag: payload.tag || payload.type || 'stockmanager-notification',
+    tag: payload.tag || payload.type || 'cellarlyos-notification',
     renotify: true,
     requireInteraction: false,
     silent: false,

@@ -15,7 +15,7 @@ import crypto from 'crypto';
 const TOKEN_SECRET =
   process.env.CUSTOMER_TOKEN_SECRET ||
   process.env.CRON_SECRET ||
-  'stockmanager-fallback-secret';
+  'cellarlyos-fallback-secret';
 
 /** Token มีอายุ 24 ชั่วโมง (เปลี่ยนได้) */
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;

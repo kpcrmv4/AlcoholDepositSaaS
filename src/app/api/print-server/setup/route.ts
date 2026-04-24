@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
   const password = generatePassword();
   const username = `printer-${store.store_code.toLowerCase()}`;
-  const email = `${username}@stockmanager.app`;
+  const email = `${username}@cellarlyos.app`;
 
   let accountId: string;
 

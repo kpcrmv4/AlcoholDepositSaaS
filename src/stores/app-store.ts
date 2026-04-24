@@ -28,6 +28,6 @@ export const useAppStore = create<AppState>()(
         set((s) => ({ theme: s.theme === 'light' ? 'dark' : 'light' })),
       setLocale: (locale) => set({ locale }),
     }),
-    { name: 'stockmanager-app' }
+    { name: 'cellarlyos-app' }
   )
 );

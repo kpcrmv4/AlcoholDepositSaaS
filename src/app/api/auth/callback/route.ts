@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     userId = existingProfile.id;
   } else {
     // Create new customer account
-    const email = `line_${profile.userId}@stockmanager.app`;
+    const email = `line_${profile.userId}@cellarlyos.app`;
     const password = `line_${profile.userId}_${Date.now()}`;
 
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
@@ -78,8 +78,8 @@ export async function POST(request: NextRequest) {
     await supabase.auth.admin.generateLink({
       type: 'magiclink',
       email: existingProfile
-        ? `line_${profile.userId}@stockmanager.app`
-        : `line_${profile.userId}@stockmanager.app`,
+        ? `line_${profile.userId}@cellarlyos.app`
+        : `line_${profile.userId}@cellarlyos.app`,
     });
 
   if (sessionError) {

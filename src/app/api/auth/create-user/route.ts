@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
 
   const serviceClient = createServiceClient();
-  const email = `${username.trim().toLowerCase()}@stockmanager.app`;
+  const email = `${username.trim().toLowerCase()}@cellarlyos.app`;
 
   // Create auth user
   const { data: authData, error: authError } = await serviceClient.auth.admin.createUser({

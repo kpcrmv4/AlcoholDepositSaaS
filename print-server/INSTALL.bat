@@ -4,7 +4,7 @@ title Print Server - One-Click Installer
 echo.
 echo ==========================================
 echo   PRINT SERVER - ONE-CLICK INSTALLER
-echo   StockManager v2.0
+echo   CellarlyOS v2.0
 echo ==========================================
 echo.
 

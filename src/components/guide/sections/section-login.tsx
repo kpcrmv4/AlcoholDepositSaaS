@@ -6,7 +6,7 @@ export function SectionLogin() {
       <Card>
         <CardTitle>Login สำหรับพนักงาน</CardTitle>
         <Step num={1} title="เปิดเว็บไซต์ระบบ">
-          <p>เข้าเว็บไซต์ StockManager จะแสดงหน้า Login อัตโนมัติ</p>
+          <p>เข้าเว็บไซต์ CellarlyOS จะแสดงหน้า Login อัตโนมัติ</p>
         </Step>
         <Step num={2} title="กรอก Username และ Password">
           <p>กรอกชื่อผู้ใช้ (username) และรหัสผ่าน จากนั้นกดปุ่ม <strong>&quot;เข้าสู่ระบบ&quot;</strong></p>

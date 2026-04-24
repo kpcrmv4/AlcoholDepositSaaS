@@ -156,7 +156,7 @@ export function MobileLayout({ children, stores }: MobileLayoutProps) {
             onClick={() => setDrawerOpen(false)}
             className="text-lg font-bold text-gray-900 dark:text-white"
           >
-            StockManager
+            CellarlyOS
           </Link>
           <button
             type="button"

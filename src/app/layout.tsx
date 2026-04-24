@@ -13,13 +13,13 @@ const notoSansThai = Noto_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: 'StockManager - ระบบจัดการสต๊อกเครื่องดื่ม',
-  description: 'ระบบจัดการสต๊อกเครื่องดื่มและฝากเหล้า สำหรับร้านอาหารและบาร์',
+  title: 'CellarlyOS - ระบบจัดการร้านเหล้า',
+  description: 'ระบบจัดการร้านเหล้าครบวงจร สำหรับร้านอาหารและบาร์',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'StockManager',
+    title: 'CellarlyOS',
   },
 };
 
@@ -48,7 +48,7 @@ export default async function RootLayout({
         {/* ป้องกันจอขาว flash ก่อน React hydrate โดยอ่าน theme จาก localStorage ทันที */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var d=JSON.parse(localStorage.getItem('stockmanager-app')||'{}');if(d.state&&d.state.theme==='dark')document.documentElement.classList.add('dark')}catch(e){}`,
+            __html: `try{var d=JSON.parse(localStorage.getItem('cellarlyos-app')||'{}');if(d.state&&d.state.theme==='dark')document.documentElement.classList.add('dark')}catch(e){}`,
           }}
         />
       </head>

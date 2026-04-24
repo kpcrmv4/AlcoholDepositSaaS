@@ -64,7 +64,7 @@ function generateUUID(): string {
 }
 
 function sanitizeEmail(username: string): string {
-  return `${username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')}@stockmanager.app`;
+  return `${username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')}@cellarlyos.app`;
 }
 
 // ============================================================
@@ -75,7 +75,7 @@ async function migrateAppSettings() {
   log('--- Migrating App Settings ---');
   // Example settings - customize based on your Master_Settings sheet
   const settings = [
-    { key: 'app_name', value: 'StockManager', type: 'string', description: 'ชื่อแอป' },
+    { key: 'app_name', value: 'CellarlyOS', type: 'string', description: 'ชื่อแอป' },
     { key: 'version', value: '2.0.0', type: 'string', description: 'เวอร์ชัน' },
     { key: 'default_expiry_days', value: '90', type: 'number', description: 'จำนวนวันเริ่มต้นก่อนหมดอายุ' },
   ];
@@ -310,7 +310,7 @@ async function migrateComparisons(storeId: string, comparisons: Array<{
 // ============================================================
 
 async function main() {
-  log('=== StockManager Data Migration ===');
+  log('=== CellarlyOS Data Migration ===');
   log('From: Google Sheets → Supabase');
   log('');
 

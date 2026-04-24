@@ -1,6 +1,6 @@
 # AlcoholDepositSaaS — SaaS Multi-Tenant Upgrade Plan
 
-> เอกสารนี้เริ่มจาก **planning document** สำหรับการยกระดับระบบ StockManager
+> เอกสารนี้เริ่มจาก **planning document** สำหรับการยกระดับระบบ CellarlyOS
 > (single-tenant) ให้กลายเป็น **SaaS Multi-Tenant** เต็มรูปแบบ
 > โดยอ้างอิงและแก้ไข `supabase/migrations/00000_full_schema_consolidated.sql`
 > เป็น source of truth ของ schema ใหม่
@@ -17,7 +17,7 @@
 
 ### 1.1 เป้าหมายทางธุรกิจ
 
-ปัจจุบัน StockManager เป็นระบบ **single-tenant** — หนึ่ง database หนึ่งโดเมน
+ปัจจุบัน CellarlyOS เป็นระบบ **single-tenant** — หนึ่ง database หนึ่งโดเมน
 ใช้โดยบริษัทเดียว แต่ละ "store" คือสาขาของบริษัทนั้น
 
 เป้าหมายใหม่คือเปลี่ยนเป็น **Multi-Tenant SaaS** ที่:

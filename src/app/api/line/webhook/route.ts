@@ -551,7 +551,7 @@ async function handleTextMessage(
     });
 
     const flex = openDepositSystemFlex({
-      store_name: storeInfo?.store_name || 'StockManager',
+      store_name: storeInfo?.store_name || 'CellarlyOS',
       active_deposit_count: count ?? 0,
       entry_url: entryUrl,
     });
@@ -577,7 +577,7 @@ async function handleTextMessage(
     [
       {
         type: 'text',
-        text: `📋 StockManager\n\n• พิมพ์รหัสฝาก (DEP-xxxxx) เพื่อตรวจสอบสถานะ\n• พิมพ์ "ฝากเหล้า" เพื่อเปิดระบบฝากเหล้า\n\n🔗 เปิดหน้าลูกค้า: ${portalLink}${storeSuffix}`,
+        text: `📋 CellarlyOS\n\n• พิมพ์รหัสฝาก (DEP-xxxxx) เพื่อตรวจสอบสถานะ\n• พิมพ์ "ฝากเหล้า" เพื่อเปิดระบบฝากเหล้า\n\n🔗 เปิดหน้าลูกค้า: ${portalLink}${storeSuffix}`,
       },
     ],
     botToken,

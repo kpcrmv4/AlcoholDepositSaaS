@@ -1,7 +1,7 @@
 {
-  "name": "StockManager - ระบบจัดการสต๊อกเครื่องดื่ม",
-  "short_name": "StockManager",
-  "description": "ระบบจัดการสต๊อกเครื่องดื่มและฝากเหล้า สำหรับร้านอาหารและบาร์",
+  "name": "CellarlyOS - ระบบจัดการร้านเหล้า",
+  "short_name": "CellarlyOS",
+  "description": "ระบบจัดการร้านเหล้าครบวงจร สำหรับร้านอาหารและบาร์",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
