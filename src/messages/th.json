@@ -3250,5 +3250,125 @@
     "approve": "อนุมัติ",
     "approveDesc": "ตรวจสอบและอนุมัติคำชี้แจง",
     "statusApproved": "อนุมัติแล้ว"
+  },
+  "platformAdmin": {
+    "nav": {
+      "title": "ผู้ดูแลระบบ (Platform)",
+      "tenants": "ผู้เช่า",
+      "auditLog": "บันทึกการใช้งาน",
+      "usage": "การใช้งาน"
+    },
+    "roles": {
+      "super_admin": "ผู้ดูแลสูงสุด",
+      "admin": "ผู้ดูแล",
+      "viewer": "ผู้ชม"
+    },
+    "plans": {
+      "trial": "ทดลอง (7 วัน)",
+      "pro": "Pro (ไม่มีวันหมดอายุ)",
+      "starter": "Starter (Legacy)",
+      "growth": "Growth (Legacy)",
+      "enterprise": "Enterprise (Legacy)",
+      "custom": "Custom (Legacy)"
+    },
+    "status": {
+      "trial": "ทดลองใช้",
+      "active": "เปิดใช้งาน",
+      "suspended": "ถูกระงับ",
+      "cancelled": "ยกเลิก"
+    },
+    "lineMode": {
+      "per_store": "ต่อสาขา (แต่ละสาขามี OA ของตัวเอง)",
+      "tenant": "ต่อผู้เช่า (ใช้ OA เดียวร่วมทุกสาขา)"
+    },
+    "tenants": {
+      "title": "ผู้เช่า (Tenants)",
+      "newButton": "+ เพิ่มผู้เช่าใหม่",
+      "searchPlaceholder": "ค้นหาจาก slug, ชื่อบริษัท หรืออีเมล",
+      "allStatuses": "สถานะทั้งหมด",
+      "filter": "กรอง",
+      "colCompany": "บริษัท",
+      "colSlug": "Slug",
+      "colStatus": "สถานะ",
+      "colPlan": "แพ็กเกจ",
+      "colBranches": "สาขา",
+      "colCreated": "สร้างเมื่อ",
+      "empty": "ไม่พบผู้เช่า"
+    },
+    "newTenant": {
+      "title": "เพิ่มผู้เช่าใหม่",
+      "companyHeading": "ข้อมูลบริษัท",
+      "companyName": "ชื่อบริษัท",
+      "slug": "Slug (URL)",
+      "slugPlaceholder": "bar-somchai",
+      "contactEmail": "อีเมลติดต่อ",
+      "contactPhone": "เบอร์โทรศัพท์",
+      "legalName": "ชื่อตามกฎหมาย",
+      "taxId": "เลขผู้เสียภาษี",
+      "planHeading": "แพ็กเกจ",
+      "plan": "แพ็กเกจ",
+      "trialDays": "จำนวนวันทดลอง",
+      "trialDaysHint": "เฉพาะแพ็กเกจ Trial — Pro จะไม่มีวันหมดอายุ",
+      "maxBranches": "จำนวนสาขาสูงสุด",
+      "maxUsers": "จำนวนผู้ใช้สูงสุด",
+      "lineHeading": "LINE",
+      "lineMode": "โหมด LINE",
+      "lineHint": "ค่า Channel ID / secret / token ตั้งได้หลังสร้างในหน้ารายละเอียดผู้เช่า",
+      "cancel": "ยกเลิก",
+      "submit": "สร้างผู้เช่า",
+      "submitting": "กำลังสร้าง…"
+    },
+    "tenantDetail": {
+      "backToTenants": "กลับไปยังผู้เช่า",
+      "statSlug": "Slug",
+      "statPlan": "แพ็กเกจ",
+      "statBranches": "สาขา",
+      "statUsers": "ผู้ใช้",
+      "tabPlan": "แพ็กเกจและโควต้า",
+      "tabLine": "LINE OA",
+      "tabBranding": "ตราสัญลักษณ์",
+      "tabDanger": "โซนอันตราย",
+      "planSaved": "✅ บันทึกแล้ว",
+      "planSave": "บันทึกแพ็กเกจ",
+      "planSaving": "กำลังบันทึก…",
+      "lineMode": "โหมด",
+      "lineBasicId": "Basic ID (เช่น @company)",
+      "lineChannelId": "Channel ID",
+      "liffId": "LIFF ID",
+      "lineSecret": "Channel secret",
+      "lineToken": "Channel access token",
+      "lineOwnerGroup": "Owner group ID",
+      "lineWebhookLabel": "Webhook URL:",
+      "lineWebhookHint": "วาง URL นี้ใน LINE Developer Console",
+      "lineVerify": "🔍 ตรวจสอบ token ที่บันทึกไว้",
+      "lineSave": "บันทึก LINE",
+      "brandColor": "สีแบรนด์",
+      "logoUrl": "URL โลโก้",
+      "brandingSave": "บันทึกตราสัญลักษณ์",
+      "suspendButton": "ระงับผู้เช่า",
+      "resumeButton": "คืนการใช้งาน",
+      "suspendReasonPrompt": "เหตุผลในการระงับ? (ไม่บังคับ)",
+      "dangerDescription": "การระงับจะบล็อก session ของผู้ใช้ทั้งหมดและ redirect ไปที่ /suspended ข้อมูลทั้งหมดยังถูกเก็บไว้ สามารถกู้คืนได้ตลอด",
+      "recentAudit": "บันทึกล่าสุด",
+      "auditEmpty": "ยังไม่มีบันทึก"
+    },
+    "audit": {
+      "title": "บันทึกการใช้งาน",
+      "colTime": "เวลา",
+      "colTenant": "ผู้เช่า",
+      "colAdmin": "ผู้ดูแล",
+      "colAction": "การกระทำ",
+      "colPayload": "ข้อมูล",
+      "empty": "ยังไม่มีบันทึก"
+    },
+    "usage": {
+      "title": "การใช้งาน",
+      "description": "จำนวนการฝากเป็นของเดือนปัจจุบัน แสดงเป็นยอดรวมเท่านั้น ไม่มีข้อมูลรายรายการ",
+      "colTenant": "ผู้เช่า",
+      "colPlan": "แพ็กเกจ",
+      "colBranches": "สาขา",
+      "colUsers": "ผู้ใช้",
+      "colDepositsMtd": "ฝาก (ตั้งแต่ต้นเดือน)"
+    }
   }
 }

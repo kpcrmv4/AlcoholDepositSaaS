@@ -2,11 +2,16 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+
+const TRIAL_DAYS = 7;
 
 export default function NewTenantPage() {
   const router = useRouter();
+  const t = useTranslations('platformAdmin');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<'trial' | 'pro'>('trial');
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -14,6 +19,8 @@ export default function NewTenantPage() {
     setError(null);
 
     const fd = new FormData(e.currentTarget);
+    const selectedPlan = (fd.get('plan') as 'trial' | 'pro') || 'trial';
+
     const payload = {
       slug: String(fd.get('slug') || '').toLowerCase(),
       company_name: fd.get('company_name'),
@@ -21,14 +28,15 @@ export default function NewTenantPage() {
       contact_phone: fd.get('contact_phone'),
       legal_name: fd.get('legal_name'),
       tax_id: fd.get('tax_id'),
-      plan: fd.get('plan') || 'trial',
+      plan: selectedPlan,
       max_branches: Number(fd.get('max_branches') || 1),
       max_users: Number(fd.get('max_users') || 10),
       line_mode: fd.get('line_mode') || 'per_store',
-      status: 'trial',
-      trial_ends_at: fd.get('trial_days')
-        ? new Date(Date.now() + Number(fd.get('trial_days')) * 86400_000).toISOString()
-        : null,
+      status: selectedPlan === 'trial' ? 'trial' : 'active',
+      trial_ends_at:
+        selectedPlan === 'trial'
+          ? new Date(Date.now() + TRIAL_DAYS * 86400_000).toISOString()
+          : null,
     };
 
     const res = await fetch('/api/platform/tenants', {
@@ -50,7 +58,7 @@ export default function NewTenantPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="text-2xl font-semibold">Create new tenant</h1>
+      <h1 className="text-2xl font-semibold">{t('newTenant.title')}</h1>
 
       {error && (
         <div className="rounded border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-800">
@@ -60,41 +68,55 @@ export default function NewTenantPage() {
 
       <form onSubmit={onSubmit} className="space-y-6 rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
         <section>
-          <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Company</h2>
+          <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">{t('newTenant.companyHeading')}</h2>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Company name *" name="company_name" required />
-            <Field label="Slug (URL) *" name="slug" required placeholder="bar-somchai" />
-            <Field label="Contact email *" name="contact_email" required type="email" />
-            <Field label="Contact phone" name="contact_phone" />
-            <Field label="Legal name" name="legal_name" />
-            <Field label="Tax ID" name="tax_id" />
+            <Field label={`${t('newTenant.companyName')} *`} name="company_name" required />
+            <Field label={`${t('newTenant.slug')} *`} name="slug" required placeholder={t('newTenant.slugPlaceholder')} />
+            <Field label={`${t('newTenant.contactEmail')} *`} name="contact_email" required type="email" />
+            <Field label={t('newTenant.contactPhone')} name="contact_phone" />
+            <Field label={t('newTenant.legalName')} name="legal_name" />
+            <Field label={t('newTenant.taxId')} name="tax_id" />
           </div>
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Plan</h2>
+          <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">{t('newTenant.planHeading')}</h2>
           <div className="grid grid-cols-2 gap-4">
-            <Select label="Plan" name="plan" defaultValue="trial" options={[
-              { value: 'trial', label: 'Trial' },
-              { value: 'starter', label: 'Starter' },
-              { value: 'growth', label: 'Growth' },
-              { value: 'enterprise', label: 'Enterprise' },
-              { value: 'custom', label: 'Custom' },
-            ]} />
-            <Field label="Trial days" name="trial_days" type="number" defaultValue="14" />
-            <Field label="Max branches" name="max_branches" type="number" defaultValue="1" />
-            <Field label="Max users" name="max_users" type="number" defaultValue="10" />
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{t('newTenant.plan')}</span>
+              <select
+                name="plan"
+                value={plan}
+                onChange={(e) => setPlan(e.target.value as 'trial' | 'pro')}
+                className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
+              >
+                <option value="trial">{t('plans.trial')}</option>
+                <option value="pro">{t('plans.pro')}</option>
+              </select>
+            </label>
+            <Field label={t('newTenant.maxBranches')} name="max_branches" type="number" defaultValue="1" />
+            <Field label={t('newTenant.maxUsers')} name="max_users" type="number" defaultValue="10" />
           </div>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">LINE</h2>
-          <Select label="LINE mode" name="line_mode" defaultValue="per_store" options={[
-            { value: 'per_store', label: 'Per store (each branch has its own OA)' },
-            { value: 'tenant', label: 'Tenant (single OA for all branches)' },
-          ]} />
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            Channel ID / secret / token are set from the tenant detail page after creation.
+            {t('newTenant.trialDaysHint')}
+          </p>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">{t('newTenant.lineHeading')}</h2>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{t('newTenant.lineMode')}</span>
+            <select
+              name="line_mode"
+              defaultValue="per_store"
+              className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
+            >
+              <option value="per_store">{t('lineMode.per_store')}</option>
+              <option value="tenant">{t('lineMode.tenant')}</option>
+            </select>
+          </label>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            {t('newTenant.lineHint')}
           </p>
         </section>
 
@@ -104,14 +126,14 @@ export default function NewTenantPage() {
             onClick={() => router.back()}
             className="rounded px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
-            Cancel
+            {t('newTenant.cancel')}
           </button>
           <button
             type="submit"
             disabled={submitting}
             className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {submitting ? 'Creating…' : 'Create tenant'}
+            {submitting ? t('newTenant.submitting') : t('newTenant.submit')}
           </button>
         </div>
       </form>
@@ -128,27 +150,6 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
         {...rest}
         className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
       />
-    </label>
-  );
-}
-
-function Select({
-  label, name, defaultValue, options,
-}: {
-  label: string; name: string; defaultValue?: string; options: Array<{ value: string; label: string }>;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{label}</span>
-      <select
-        name={name}
-        defaultValue={defaultValue}
-        className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
     </label>
   );
 }

@@ -3248,5 +3248,125 @@
     "approve": "Approve",
     "approveDesc": "Review and approve explanations",
     "statusApproved": "Approved"
+  },
+  "platformAdmin": {
+    "nav": {
+      "title": "Platform Admin",
+      "tenants": "Tenants",
+      "auditLog": "Audit Log",
+      "usage": "Usage"
+    },
+    "roles": {
+      "super_admin": "Super Admin",
+      "admin": "Admin",
+      "viewer": "Viewer"
+    },
+    "plans": {
+      "trial": "Trial (7 days)",
+      "pro": "Pro (unlimited)",
+      "starter": "Starter (Legacy)",
+      "growth": "Growth (Legacy)",
+      "enterprise": "Enterprise (Legacy)",
+      "custom": "Custom (Legacy)"
+    },
+    "status": {
+      "trial": "Trial",
+      "active": "Active",
+      "suspended": "Suspended",
+      "cancelled": "Cancelled"
+    },
+    "lineMode": {
+      "per_store": "Per store (each branch has its own OA)",
+      "tenant": "Tenant (single OA for all branches)"
+    },
+    "tenants": {
+      "title": "Tenants",
+      "newButton": "+ New tenant",
+      "searchPlaceholder": "Search by slug, name, or email",
+      "allStatuses": "All statuses",
+      "filter": "Filter",
+      "colCompany": "Company",
+      "colSlug": "Slug",
+      "colStatus": "Status",
+      "colPlan": "Plan",
+      "colBranches": "Branches",
+      "colCreated": "Created",
+      "empty": "No tenants found."
+    },
+    "newTenant": {
+      "title": "Create new tenant",
+      "companyHeading": "Company",
+      "companyName": "Company name",
+      "slug": "Slug (URL)",
+      "slugPlaceholder": "bar-somchai",
+      "contactEmail": "Contact email",
+      "contactPhone": "Contact phone",
+      "legalName": "Legal name",
+      "taxId": "Tax ID",
+      "planHeading": "Plan",
+      "plan": "Plan",
+      "trialDays": "Trial days",
+      "trialDaysHint": "Only applies to Trial plan — Pro has no expiry",
+      "maxBranches": "Max branches",
+      "maxUsers": "Max users",
+      "lineHeading": "LINE",
+      "lineMode": "LINE mode",
+      "lineHint": "Channel ID / secret / token are set from the tenant detail page after creation.",
+      "cancel": "Cancel",
+      "submit": "Create tenant",
+      "submitting": "Creating…"
+    },
+    "tenantDetail": {
+      "backToTenants": "Tenants",
+      "statSlug": "Slug",
+      "statPlan": "Plan",
+      "statBranches": "Branches",
+      "statUsers": "Users",
+      "tabPlan": "Plan & limits",
+      "tabLine": "LINE OA",
+      "tabBranding": "Branding",
+      "tabDanger": "Danger zone",
+      "planSaved": "✅ Saved",
+      "planSave": "Save plan",
+      "planSaving": "Saving…",
+      "lineMode": "Mode",
+      "lineBasicId": "Basic ID (e.g. @company)",
+      "lineChannelId": "Channel ID",
+      "liffId": "LIFF ID",
+      "lineSecret": "Channel secret",
+      "lineToken": "Channel access token",
+      "lineOwnerGroup": "Owner group ID",
+      "lineWebhookLabel": "Webhook URL:",
+      "lineWebhookHint": "paste this into LINE Developer Console",
+      "lineVerify": "🔍 Verify saved token",
+      "lineSave": "Save LINE",
+      "brandColor": "Brand color",
+      "logoUrl": "Logo URL",
+      "brandingSave": "Save branding",
+      "suspendButton": "Suspend tenant",
+      "resumeButton": "Resume tenant",
+      "suspendReasonPrompt": "Reason for suspension? (optional)",
+      "dangerDescription": "Suspending a tenant blocks all user sessions and redirects to /suspended. Data is preserved and can be resumed at any time.",
+      "recentAudit": "Recent audit",
+      "auditEmpty": "No audit entries yet."
+    },
+    "audit": {
+      "title": "Audit log",
+      "colTime": "Time",
+      "colTenant": "Tenant",
+      "colAdmin": "Admin",
+      "colAction": "Action",
+      "colPayload": "Payload",
+      "empty": "No audit entries."
+    },
+    "usage": {
+      "title": "Usage",
+      "description": "Deposit counts are for the current month. Aggregate only — no row-level data.",
+      "colTenant": "Tenant",
+      "colPlan": "Plan",
+      "colBranches": "Branches",
+      "colUsers": "Users",
+      "colDepositsMtd": "Deposits (MTD)"
+    }
   }
 }

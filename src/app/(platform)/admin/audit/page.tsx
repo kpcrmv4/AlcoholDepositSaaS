@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server';
 import { createServiceClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +14,7 @@ export default async function AuditPage({
 }) {
   const { tenant_id = '' } = await searchParams;
   const supabase = createServiceClient();
+  const t = await getTranslations('platformAdmin');
 
   let query = supabase
     .from('tenant_audit_logs')
@@ -28,17 +30,17 @@ export default async function AuditPage({
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Audit log</h1>
+      <h1 className="text-2xl font-semibold">{t('audit.title')}</h1>
 
       <div className="overflow-hidden rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         <table className="w-full text-sm">
           <thead className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-left">
             <tr>
-              <th className="px-4 py-2 font-medium">Time</th>
-              <th className="px-4 py-2 font-medium">Tenant</th>
-              <th className="px-4 py-2 font-medium">Admin</th>
-              <th className="px-4 py-2 font-medium">Action</th>
-              <th className="px-4 py-2 font-medium">Payload</th>
+              <th className="px-4 py-2 font-medium">{t('audit.colTime')}</th>
+              <th className="px-4 py-2 font-medium">{t('audit.colTenant')}</th>
+              <th className="px-4 py-2 font-medium">{t('audit.colAdmin')}</th>
+              <th className="px-4 py-2 font-medium">{t('audit.colAction')}</th>
+              <th className="px-4 py-2 font-medium">{t('audit.colPayload')}</th>
             </tr>
           </thead>
           <tbody>
@@ -71,7 +73,7 @@ export default async function AuditPage({
             {(data ?? []).length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                  No audit entries.
+                  {t('audit.empty')}
                 </td>
               </tr>
             )}

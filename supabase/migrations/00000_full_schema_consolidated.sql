@@ -26,7 +26,9 @@ SET timezone = 'Asia/Bangkok';
 
 -- SaaS / tenancy enums
 CREATE TYPE tenant_status AS ENUM ('active', 'suspended', 'trial', 'cancelled');
-CREATE TYPE tenant_plan   AS ENUM ('trial', 'starter', 'growth', 'enterprise', 'custom');
+-- Legacy values (starter, growth, enterprise, custom) kept for backwards
+-- compatibility; new UI only offers 'trial' and 'pro'.
+CREATE TYPE tenant_plan   AS ENUM ('trial', 'starter', 'growth', 'enterprise', 'custom', 'pro');
 CREATE TYPE line_mode     AS ENUM ('tenant', 'per_store');
 CREATE TYPE platform_admin_role AS ENUM ('super_admin', 'admin', 'support', 'readonly');
 

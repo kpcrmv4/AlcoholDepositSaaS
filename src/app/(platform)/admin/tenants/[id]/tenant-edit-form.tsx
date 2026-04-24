@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 interface TenantRow {
   id: string;
@@ -26,6 +27,7 @@ interface TenantRow {
 
 export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
   const router = useRouter();
+  const t = useTranslations('platformAdmin');
   const [tab, setTab] = useState<'plan' | 'line' | 'branding' | 'danger'>('plan');
   const [saving, setSaving] = useState(false);
   const [verifyResult, setVerifyResult] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
       setMsg(`❌ ${b.error || res.statusText}`);
       return false;
     }
-    setMsg('✅ Saved');
+    setMsg(t('tenantDetail.planSaved'));
     router.refresh();
     return true;
   }
@@ -64,7 +66,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
   }
 
   async function suspend() {
-    const reason = prompt('Reason for suspension? (optional)') ?? '';
+    const reason = prompt(t('tenantDetail.suspendReasonPrompt')) ?? '';
     const res = await fetch(`/api/platform/tenants/${tenant.id}/suspend`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -78,14 +80,19 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
     if (res.ok) router.refresh();
   }
 
+  // Legacy plans that may still exist in DB — show alongside trial/pro so admins
+  // can still read/reassign the current value, but funnel new selections into pro.
+  const LEGACY_PLANS = ['starter', 'growth', 'enterprise', 'custom'];
+  const needsLegacyOption = LEGACY_PLANS.includes(tenant.plan);
+
   return (
     <section className="rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
       <div className="flex border-b border-gray-200 dark:border-gray-800">
         {([
-          ['plan', 'Plan & limits'],
-          ['line', 'LINE OA'],
-          ['branding', 'Branding'],
-          ['danger', 'Danger zone'],
+          ['plan', t('tenantDetail.tabPlan')],
+          ['line', t('tenantDetail.tabLine')],
+          ['branding', t('tenantDetail.tabBranding')],
+          ['danger', t('tenantDetail.tabDanger')],
         ] as const).map(([k, label]) => (
           <button
             key={k}
@@ -117,15 +124,27 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
               });
             }}
           >
-            <Select label="Plan" name="plan" defaultValue={tenant.plan} options={[
-              ['trial', 'Trial'], ['starter', 'Starter'], ['growth', 'Growth'],
-              ['enterprise', 'Enterprise'], ['custom', 'Custom'],
-            ]} />
-            <Field label="Max branches" name="max_branches" type="number" defaultValue={tenant.max_branches} />
-            <Field label="Max users" name="max_users" type="number" defaultValue={tenant.max_users} />
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{t('newTenant.plan')}</span>
+              <select
+                name="plan"
+                defaultValue={tenant.plan}
+                className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
+              >
+                <option value="trial">{t('plans.trial')}</option>
+                <option value="pro">{t('plans.pro')}</option>
+                {needsLegacyOption && (
+                  <option value={tenant.plan}>
+                    {t(`plans.${tenant.plan}` as 'plans.starter')}
+                  </option>
+                )}
+              </select>
+            </label>
+            <Field label={t('newTenant.maxBranches')} name="max_branches" type="number" defaultValue={tenant.max_branches} />
+            <Field label={t('newTenant.maxUsers')} name="max_users" type="number" defaultValue={tenant.max_users} />
             <div className="col-span-2 flex justify-end">
               <button disabled={saving} className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
-                {saving ? 'Saving…' : 'Save plan'}
+                {saving ? t('tenantDetail.planSaving') : t('tenantDetail.planSave')}
               </button>
             </div>
           </form>
@@ -148,18 +167,25 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
               });
             }}
           >
-            <Select label="Mode" name="line_mode" defaultValue={tenant.line_mode} options={[
-              ['per_store', 'Per store'],
-              ['tenant', 'Tenant (single OA)'],
-            ]} />
-            <Field label="Basic ID (e.g. @company)" name="line_basic_id" defaultValue={tenant.line_basic_id ?? ''} />
-            <Field label="Channel ID" name="line_channel_id" defaultValue={tenant.line_channel_id ?? ''} />
-            <Field label="LIFF ID" name="liff_id" defaultValue={tenant.liff_id ?? ''} />
-            <Field label="Channel secret" name="line_channel_secret" type="password" defaultValue={tenant.line_channel_secret ?? ''} />
-            <Field label="Channel access token" name="line_channel_token" type="password" defaultValue={tenant.line_channel_token ?? ''} />
-            <Field label="Owner group ID" name="line_owner_group_id" defaultValue={tenant.line_owner_group_id ?? ''} />
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{t('tenantDetail.lineMode')}</span>
+              <select
+                name="line_mode"
+                defaultValue={tenant.line_mode}
+                className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
+              >
+                <option value="per_store">{t('lineMode.per_store')}</option>
+                <option value="tenant">{t('lineMode.tenant')}</option>
+              </select>
+            </label>
+            <Field label={t('tenantDetail.lineBasicId')} name="line_basic_id" defaultValue={tenant.line_basic_id ?? ''} />
+            <Field label={t('tenantDetail.lineChannelId')} name="line_channel_id" defaultValue={tenant.line_channel_id ?? ''} />
+            <Field label={t('tenantDetail.liffId')} name="liff_id" defaultValue={tenant.liff_id ?? ''} />
+            <Field label={t('tenantDetail.lineSecret')} name="line_channel_secret" type="password" defaultValue={tenant.line_channel_secret ?? ''} />
+            <Field label={t('tenantDetail.lineToken')} name="line_channel_token" type="password" defaultValue={tenant.line_channel_token ?? ''} />
+            <Field label={t('tenantDetail.lineOwnerGroup')} name="line_owner_group_id" defaultValue={tenant.line_owner_group_id ?? ''} />
             <div className="col-span-2 rounded border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-3 text-xs text-gray-600 dark:text-gray-400">
-              <div><strong>Webhook URL:</strong> paste this into LINE Developer Console</div>
+              <div><strong>{t('tenantDetail.lineWebhookLabel')}</strong> {t('tenantDetail.lineWebhookHint')}</div>
               <code className="mt-1 block font-mono">
                 {process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.example.com'}/api/line/webhook
               </code>
@@ -170,11 +196,11 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
                 onClick={verifyLine}
                 className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
               >
-                🔍 Verify saved token
+                {t('tenantDetail.lineVerify')}
               </button>
               <span className="text-xs">{verifyResult}</span>
               <button disabled={saving} className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
-                {saving ? 'Saving…' : 'Save LINE'}
+                {saving ? t('tenantDetail.planSaving') : t('tenantDetail.lineSave')}
               </button>
             </div>
           </form>
@@ -192,11 +218,11 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
               });
             }}
           >
-            <Field label="Brand color" name="brand_color" type="color" defaultValue={tenant.brand_color ?? '#0ea5e9'} />
-            <Field label="Logo URL" name="logo_url" defaultValue={tenant.logo_url ?? ''} />
+            <Field label={t('tenantDetail.brandColor')} name="brand_color" type="color" defaultValue={tenant.brand_color ?? '#0ea5e9'} />
+            <Field label={t('tenantDetail.logoUrl')} name="logo_url" defaultValue={tenant.logo_url ?? ''} />
             <div className="col-span-2 flex justify-end">
               <button disabled={saving} className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
-                {saving ? 'Saving…' : 'Save branding'}
+                {saving ? t('tenantDetail.planSaving') : t('tenantDetail.brandingSave')}
               </button>
             </div>
           </form>
@@ -209,19 +235,18 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
                 onClick={resume}
                 className="rounded bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
               >
-                Resume tenant
+                {t('tenantDetail.resumeButton')}
               </button>
             ) : (
               <button
                 onClick={suspend}
                 className="rounded bg-amber-600 px-4 py-2 text-white hover:bg-amber-700"
               >
-                Suspend tenant
+                {t('tenantDetail.suspendButton')}
               </button>
             )}
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Suspending a tenant blocks all user sessions and redirects to /suspended.
-              Data is preserved and can be resumed at any time.
+              {t('tenantDetail.dangerDescription')}
             </p>
           </div>
         )}
@@ -236,27 +261,6 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
     <label className="block">
       <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{label}</span>
       <input {...rest} className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm" />
-    </label>
-  );
-}
-
-function Select({
-  label, name, defaultValue, options,
-}: {
-  label: string; name: string; defaultValue?: string; options: Array<[string, string]>;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{label}</span>
-      <select
-        name={name}
-        defaultValue={defaultValue}
-        className="w-full rounded border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm"
-      >
-        {options.map(([v, l]) => (
-          <option key={v} value={v}>{l}</option>
-        ))}
-      </select>
     </label>
   );
 }

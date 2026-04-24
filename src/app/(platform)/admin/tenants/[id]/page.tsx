@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import TenantEditForm from './tenant-edit-form';
 
@@ -12,6 +13,7 @@ interface Params {
 export default async function TenantDetailPage({ params }: Params) {
   const { id } = await params;
   const supabase = createServiceClient();
+  const t = await getTranslations('platformAdmin');
 
   const { data: tenant } = await supabase
     .from('tenants')
@@ -36,11 +38,26 @@ export default async function TenantDetailPage({ params }: Params) {
       .limit(20),
   ]);
 
+  const planLabel = (plan: string) => {
+    try {
+      return t(`plans.${plan}` as 'plans.trial');
+    } catch {
+      return plan;
+    }
+  };
+  const statusLabel = (st: string) => {
+    try {
+      return t(`status.${st}` as 'status.active');
+    } catch {
+      return st;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/admin/tenants" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
-          ← Tenants
+          ← {t('tenantDetail.backToTenants')}
         </Link>
         <span className="text-gray-400 dark:text-gray-500">/</span>
         <h1 className="text-2xl font-semibold">{tenant.company_name}</h1>
@@ -55,21 +72,21 @@ export default async function TenantDetailPage({ params }: Params) {
                   : 'bg-sky-100 text-sky-800'
           }`}
         >
-          {tenant.status}
+          {statusLabel(tenant.status)}
         </span>
       </div>
 
       <div className="grid grid-cols-4 gap-4">
-        <Stat label="Slug" value={tenant.slug} mono />
-        <Stat label="Plan" value={tenant.plan} />
-        <Stat label="Branches" value={`${branchCount ?? 0} / ${tenant.max_branches}`} />
-        <Stat label="Users" value={`${userCount ?? 0} / ${tenant.max_users}`} />
+        <Stat label={t('tenantDetail.statSlug')} value={tenant.slug} mono />
+        <Stat label={t('tenantDetail.statPlan')} value={planLabel(tenant.plan)} />
+        <Stat label={t('tenantDetail.statBranches')} value={`${branchCount ?? 0} / ${tenant.max_branches}`} />
+        <Stat label={t('tenantDetail.statUsers')} value={`${userCount ?? 0} / ${tenant.max_users}`} />
       </div>
 
       <TenantEditForm tenant={tenant} />
 
       <section className="rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
-        <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Recent audit</h2>
+        <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">{t('tenantDetail.recentAudit')}</h2>
         <ul className="space-y-1 text-sm">
           {(audit ?? []).map((a) => (
             <li key={a.id} className="flex justify-between gap-2 border-b border-gray-50 dark:border-gray-800 py-1.5 last:border-0">
@@ -83,7 +100,7 @@ export default async function TenantDetailPage({ params }: Params) {
             </li>
           ))}
           {(audit ?? []).length === 0 && (
-            <li className="text-xs text-gray-500 dark:text-gray-400">No audit entries yet.</li>
+            <li className="text-xs text-gray-500 dark:text-gray-400">{t('tenantDetail.auditEmpty')}</li>
           )}
         </ul>
       </section>

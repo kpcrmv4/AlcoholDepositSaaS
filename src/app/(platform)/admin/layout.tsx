@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import type { ReactNode } from 'react';
 
@@ -22,18 +23,28 @@ async function getPlatformAdminOrRedirect() {
   return admin;
 }
 
-const NAV = [
-  { href: '/admin/tenants', label: 'Tenants' },
-  { href: '/admin/audit', label: 'Audit Log' },
-  { href: '/admin/usage', label: 'Usage' },
-];
-
 export default async function PlatformAdminLayout({
   children,
 }: {
   children: ReactNode;
 }) {
   const admin = await getPlatformAdminOrRedirect();
+  const t = await getTranslations('platformAdmin');
+
+  const NAV = [
+    { href: '/admin/tenants', label: t('nav.tenants') },
+    { href: '/admin/audit', label: t('nav.auditLog') },
+    { href: '/admin/usage', label: t('nav.usage') },
+  ];
+
+  const roleKey = `roles.${admin.role}` as const;
+  const roleLabel = (() => {
+    try {
+      return t(roleKey);
+    } catch {
+      return admin.role;
+    }
+  })();
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -41,7 +52,7 @@ export default async function PlatformAdminLayout({
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-6">
             <Link href="/admin/tenants" className="text-lg font-semibold">
-              🛡️ Platform Admin
+              🛡️ {t('nav.title')}
             </Link>
             <nav className="flex items-center gap-1">
               {NAV.map((n) => (
@@ -58,7 +69,7 @@ export default async function PlatformAdminLayout({
           <div className="text-sm text-gray-500 dark:text-gray-400">
             {admin.display_name || admin.email}
             <span className="ml-2 rounded bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 text-xs">
-              {admin.role}
+              {roleLabel}
             </span>
           </div>
         </div>

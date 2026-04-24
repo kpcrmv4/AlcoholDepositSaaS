@@ -2845,7 +2845,7 @@ export type Database = {
       platform_admin_role: "super_admin" | "admin" | "support" | "readonly"
       print_job_status: "pending" | "printing" | "completed" | "failed"
       print_job_type: "receipt" | "label" | "transfer"
-      tenant_plan: "trial" | "starter" | "growth" | "enterprise" | "custom"
+      tenant_plan: "trial" | "starter" | "growth" | "enterprise" | "custom" | "pro"
       tenant_status: "active" | "suspended" | "trial" | "cancelled"
       transfer_status: "pending" | "confirmed" | "rejected"
       user_role:
@@ -3012,7 +3012,7 @@ export const Constants = {
       platform_admin_role: ["super_admin", "admin", "support", "readonly"],
       print_job_status: ["pending", "printing", "completed", "failed"],
       print_job_type: ["receipt", "label", "transfer"],
-      tenant_plan: ["trial", "starter", "growth", "enterprise", "custom"],
+      tenant_plan: ["trial", "starter", "growth", "enterprise", "custom", "pro"],
       tenant_status: ["active", "suspended", "trial", "cancelled"],
       transfer_status: ["pending", "confirmed", "rejected"],
       user_role: [
