@@ -2325,7 +2325,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 CREATE OR REPLACE FUNCTION auto_promote_super_admin()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_super_email TEXT := 'your@email.com';   -- ⚠️ CHANGE ME
+  v_super_email TEXT := 'kpcrmv4@gmail.com';   -- ⚠️ CHANGE ME
 BEGIN
   IF NEW.email = v_super_email THEN
     INSERT INTO public.platform_admins (id, email, display_name, role, active)
@@ -2341,7 +2341,7 @@ CREATE TRIGGER on_auth_user_created_super_admin
   FOR EACH ROW EXECUTE FUNCTION auto_promote_super_admin();
 
 -- Try to promote now (no-op if user hasn't signed up yet)
-SELECT bootstrap_super_admin_by_email('your@email.com');
+SELECT bootstrap_super_admin_by_email('kpcrmv4@gmail.com');
 
 -- ==========================================
 -- SEED: default tenant role_permissions
