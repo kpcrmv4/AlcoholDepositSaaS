@@ -8,12 +8,10 @@
 
 import {
   Wine,
-  Package,
   Clock,
   Hourglass,
   CheckCircle2,
   AlertCircle,
-  Loader2,
 } from 'lucide-react';
 import type { ThemeViewProps, DepositItem } from '../types';
 
@@ -25,7 +23,7 @@ const STATUS_LIQUID: Record<string, string> = {
 };
 
 export function SunsetBottleList({ props }: { props: ThemeViewProps }) {
-  const { filtered, searchQuery, requestingId, onWithdraw, onOpenDetail, t } = props;
+  const { filtered, searchQuery, onOpenDetail, t } = props;
 
   if (filtered.length === 0) {
     return (
@@ -43,14 +41,7 @@ export function SunsetBottleList({ props }: { props: ThemeViewProps }) {
   return (
     <ul className="space-y-3">
       {filtered.map((d) => (
-        <SunsetCard
-          key={d.id}
-          d={d}
-          isRequesting={requestingId === d.id}
-          onWithdraw={onWithdraw}
-          onOpenDetail={onOpenDetail}
-          t={t}
-        />
+        <SunsetCard key={d.id} d={d} onOpenDetail={onOpenDetail} t={t} />
       ))}
     </ul>
   );
@@ -58,22 +49,16 @@ export function SunsetBottleList({ props }: { props: ThemeViewProps }) {
 
 function SunsetCard({
   d,
-  isRequesting,
-  onWithdraw,
   onOpenDetail,
   t,
 }: {
   d: DepositItem;
-  isRequesting: boolean;
-  onWithdraw: (d: DepositItem) => void;
   onOpenDetail: (d: DepositItem) => void;
   t: ThemeViewProps['t'];
 }) {
   const days = d.expiryDate ? daysUntil(d.expiryDate) : null;
   const isPending = d.status === 'pending_confirm';
   const isPendingW = d.status === 'pending_withdrawal';
-  const isInStore = d.status === 'in_store';
-  const canWithdraw = isInStore && !isRequesting;
   const liquid = STATUS_LIQUID[d.status] ?? '#ea580c';
 
   const expiryTone =
@@ -138,28 +123,9 @@ function SunsetCard({
                 </span>
               </div>
 
-              <div className="mt-3">
-                {isPendingW ? (
-                  <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-100 px-3 py-2 text-[12px] font-bold text-teal-800">
-                    <Clock className="h-3.5 w-3.5" />
-                    {t('pendingWithdrawal')}
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onWithdraw(d)}
-                    disabled={!canWithdraw}
-                    className="customer-tap flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 px-3 py-2 text-[12px] font-black text-white shadow-md shadow-orange-400/40 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isRequesting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Package className="h-3.5 w-3.5" />
-                    )}
-                    {isRequesting ? t('requesting') : t('requestWithdrawal')}
-                  </button>
-                )}
-              </div>
+              <p className="mt-2 text-[10.5px] font-semibold text-orange-900/55">
+                {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+              </p>
             </>
           ) : (
             <div className="mt-2 flex items-center gap-2">
@@ -178,20 +144,19 @@ function SunsetCard({
     </>
   );
 
-  if (isPending) {
-    return (
-      <li>
-        <button
-          type="button"
-          onClick={() => onOpenDetail(d)}
-          className={'customer-tap w-full text-left ' + wrapperCls}
-        >
-          {bodyContent}
-        </button>
-      </li>
-    );
-  }
-  return <li className={wrapperCls}>{bodyContent}</li>;
+  // Whole card is the tap target — opens the detail modal regardless of
+  // status. Withdraw / cancel actions live inside the modal.
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpenDetail(d)}
+        className={'customer-tap w-full text-left ' + wrapperCls}
+      >
+        {bodyContent}
+      </button>
+    </li>
+  );
 }
 
 function SunsetBottle({ liquid, percent }: { liquid: string; percent: number }) {

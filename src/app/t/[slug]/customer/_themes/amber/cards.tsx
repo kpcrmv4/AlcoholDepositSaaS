@@ -10,17 +10,15 @@
 
 import {
   Wine,
-  Package,
   Clock,
   Hourglass,
   CheckCircle2,
   AlertCircle,
-  Loader2,
 } from 'lucide-react';
 import type { ThemeViewProps, DepositItem } from '../types';
 
 export function AmberBottleList({ props }: { props: ThemeViewProps }) {
-  const { filtered, searchQuery, requestingId, onWithdraw, onOpenDetail, t } = props;
+  const { filtered, searchQuery, onOpenDetail, t } = props;
 
   if (filtered.length === 0) {
     return (
@@ -38,14 +36,7 @@ export function AmberBottleList({ props }: { props: ThemeViewProps }) {
   return (
     <ul className="space-y-2.5">
       {filtered.map((d) => (
-        <AmberCard
-          key={d.id}
-          d={d}
-          isRequesting={requestingId === d.id}
-          onWithdraw={onWithdraw}
-          onOpenDetail={onOpenDetail}
-          t={t}
-        />
+        <AmberCard key={d.id} d={d} onOpenDetail={onOpenDetail} t={t} />
       ))}
     </ul>
   );
@@ -53,22 +44,16 @@ export function AmberBottleList({ props }: { props: ThemeViewProps }) {
 
 function AmberCard({
   d,
-  isRequesting,
-  onWithdraw,
   onOpenDetail,
   t,
 }: {
   d: DepositItem;
-  isRequesting: boolean;
-  onWithdraw: (d: DepositItem) => void;
   onOpenDetail: (d: DepositItem) => void;
   t: ThemeViewProps['t'];
 }) {
   const days = d.expiryDate ? daysUntil(d.expiryDate) : null;
   const isPending = d.status === 'pending_confirm';
   const isPendingW = d.status === 'pending_withdrawal';
-  const isInStore = d.status === 'in_store';
-  const canWithdraw = isInStore && !isRequesting;
 
   const expiryTone =
     days === null
@@ -121,73 +106,61 @@ function AmberCard({
     );
   }
 
+  // Tappable card — opens detail modal. Withdraw / cancel actions live
+  // inside the modal, not on the card.
   return (
-    <li className="overflow-hidden rounded-2xl border border-amber-200/10 bg-gradient-to-b from-[#1c150f] to-[#13100c] shadow-lg shadow-black/30">
-      <div className="flex gap-3 p-3.5">
-        <AmberBottleSvg hue="#a06b32" percent={d.remainingPercent} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="amber-serif truncate text-[15px] font-semibold text-amber-50">
-                {d.productName}
-              </h3>
-              {d.code && (
-                <span className="mt-0.5 inline-block font-mono text-[10.5px] text-amber-200/40">
-                  {d.code}
-                </span>
-              )}
-            </div>
-            <AmberStatusChip status={d.status} t={t} />
-          </div>
-
-          <div className="mt-2 flex items-center gap-2">
-            <AmberFillBar percent={d.remainingPercent} />
-            <span className="amber-serif min-w-[34px] text-right text-[12px] font-semibold text-amber-100">
-              {d.remainingPercent}%
-            </span>
-          </div>
-
-          <div className="mt-2 flex items-center justify-between text-[11px]">
-            <span className="text-amber-200/55">
-              {t('bottlesLabel')} ·{' '}
-              <span className="font-semibold text-amber-100/85">{d.remainingQty}</span>
-            </span>
-            <span className={'font-medium ' + expiryTone}>
-              {days === null
-                ? t('noExpiry')
-                : days <= 0
-                  ? t('expired')
-                  : days === 1
-                    ? t('expiresTomorrow')
-                    : t('expiresInDays', { days })}
-            </span>
-          </div>
-
-          {/* Action */}
-          <div className="mt-3">
-            {isPendingW ? (
-              <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-300/10 px-3 py-2 text-[12px] font-semibold text-sky-200">
-                <Clock className="h-3.5 w-3.5" />
-                {t('pendingWithdrawal')}
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onWithdraw(d)}
-                disabled={!canWithdraw}
-                className="customer-tap flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 px-3 py-2 text-[12px] font-bold text-[#1a1108] shadow-sm shadow-amber-500/20 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isRequesting ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Package className="h-3.5 w-3.5" />
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpenDetail(d)}
+        className="customer-tap w-full overflow-hidden rounded-2xl border border-amber-200/10 bg-gradient-to-b from-[#1c150f] to-[#13100c] p-3.5 text-left shadow-lg shadow-black/30 transition hover:border-amber-200/25"
+      >
+        <div className="flex gap-3">
+          <AmberBottleSvg hue="#a06b32" percent={d.remainingPercent} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="amber-serif truncate text-[15px] font-semibold text-amber-50">
+                  {d.productName}
+                </h3>
+                {d.code && (
+                  <span className="mt-0.5 inline-block font-mono text-[10.5px] text-amber-200/40">
+                    {d.code}
+                  </span>
                 )}
-                {isRequesting ? t('requesting') : t('requestWithdrawal')}
-              </button>
-            )}
+              </div>
+              <AmberStatusChip status={d.status} t={t} />
+            </div>
+
+            <div className="mt-2 flex items-center gap-2">
+              <AmberFillBar percent={d.remainingPercent} />
+              <span className="amber-serif min-w-[34px] text-right text-[12px] font-semibold text-amber-100">
+                {d.remainingPercent}%
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-center justify-between text-[11px]">
+              <span className="text-amber-200/55">
+                {t('bottlesLabel')} ·{' '}
+                <span className="font-semibold text-amber-100/85">{d.remainingQty}</span>
+              </span>
+              <span className={'font-medium ' + expiryTone}>
+                {days === null
+                  ? t('noExpiry')
+                  : days <= 0
+                    ? t('expired')
+                    : days === 1
+                      ? t('expiresTomorrow')
+                      : t('expiresInDays', { days })}
+              </span>
+            </div>
+
+            <p className="mt-2 text-[10.5px] font-medium text-amber-200/55">
+              {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+            </p>
           </div>
         </div>
-      </div>
+      </button>
     </li>
   );
 }

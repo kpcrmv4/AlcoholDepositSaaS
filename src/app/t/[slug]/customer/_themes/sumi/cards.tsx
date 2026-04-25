@@ -8,17 +8,15 @@
 
 import {
   Wine,
-  Package,
   Clock,
   Hourglass,
   CheckCircle2,
   AlertCircle,
-  Loader2,
 } from 'lucide-react';
 import type { ThemeViewProps, DepositItem } from '../types';
 
 export function SumiBottleList({ props }: { props: ThemeViewProps }) {
-  const { filtered, searchQuery, requestingId, onWithdraw, onOpenDetail, t } = props;
+  const { filtered, searchQuery, onOpenDetail, t } = props;
 
   if (filtered.length === 0) {
     return (
@@ -36,14 +34,7 @@ export function SumiBottleList({ props }: { props: ThemeViewProps }) {
   return (
     <ul className="divide-y divide-stone-300/50">
       {filtered.map((d) => (
-        <SumiRow
-          key={d.id}
-          d={d}
-          isRequesting={requestingId === d.id}
-          onWithdraw={onWithdraw}
-          onOpenDetail={onOpenDetail}
-          t={t}
-        />
+        <SumiRow key={d.id} d={d} onOpenDetail={onOpenDetail} t={t} />
       ))}
     </ul>
   );
@@ -51,22 +42,16 @@ export function SumiBottleList({ props }: { props: ThemeViewProps }) {
 
 function SumiRow({
   d,
-  isRequesting,
-  onWithdraw,
   onOpenDetail,
   t,
 }: {
   d: DepositItem;
-  isRequesting: boolean;
-  onWithdraw: (d: DepositItem) => void;
   onOpenDetail: (d: DepositItem) => void;
   t: ThemeViewProps['t'];
 }) {
   const days = d.expiryDate ? daysUntil(d.expiryDate) : null;
   const isPending = d.status === 'pending_confirm';
   const isPendingW = d.status === 'pending_withdrawal';
-  const isInStore = d.status === 'in_store';
-  const canWithdraw = isInStore && !isRequesting;
 
   const expiryTone =
     days === null
@@ -79,9 +64,14 @@ function SumiRow({
             ? 'text-amber-700'
             : 'text-stone-600';
 
+  // The whole row is the tap target — opens the detail modal.
   return (
-    <li className="py-4">
-      <div className="flex items-start gap-4">
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpenDetail(d)}
+        className="customer-tap flex w-full items-start gap-4 py-4 text-left"
+      >
         <SumiBottle percent={isPending ? 100 : d.remainingPercent} pending={isPending} />
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -123,36 +113,12 @@ function SumiRow({
                 </span>
               </div>
 
-              <div className="mt-3">
-                {isPendingW ? (
-                  <div className="flex items-center gap-2 text-[12px] font-medium text-stone-600">
-                    <Clock className="h-3.5 w-3.5" />
-                    {t('pendingWithdrawal')}
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onWithdraw(d)}
-                    disabled={!canWithdraw}
-                    className="customer-tap inline-flex items-center gap-2 bg-stone-900 px-4 py-2 text-[12px] font-medium tracking-wide text-stone-50 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                    style={{ borderRadius: '2px' }}
-                  >
-                    {isRequesting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Package className="h-3.5 w-3.5" />
-                    )}
-                    {isRequesting ? t('requesting') : t('requestWithdrawal')}
-                  </button>
-                )}
-              </div>
+              <p className="mt-2 text-[11px] text-stone-500">
+                {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+              </p>
             </>
           ) : (
-            <button
-              type="button"
-              onClick={() => onOpenDetail(d)}
-              className="customer-tap mt-2 flex items-center gap-2 self-start text-left"
-            >
+            <div className="mt-2 flex items-center gap-2">
               {d.tableNumber && (
                 <span className="border border-stone-300/70 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-stone-700">
                   โต๊ะ {d.tableNumber}
@@ -161,10 +127,10 @@ function SumiRow({
               <span className="sumi-text-link text-[11px]">
                 {d.isRequest ? t('tapToCancel') : t('tapToView')}
               </span>
-            </button>
+            </div>
           )}
         </div>
-      </div>
+      </button>
     </li>
   );
 }
