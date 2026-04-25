@@ -215,6 +215,8 @@ interface DepositRequestApprovedParams {
   product_name: string;
   quantity: number;
   expiry_date: string | null;
+  /** Per-store theme; brand-color the success header + accent code */
+  theme?: CustomerThemeKey | null;
 }
 
 /**
@@ -226,7 +228,8 @@ interface DepositRequestApprovedParams {
 export function depositRequestApprovedFlex(
   params: DepositRequestApprovedParams,
 ): FlexMessage {
-  const { customer_name, store_name, deposit_code, product_name, quantity, expiry_date } = params;
+  const { customer_name, store_name, deposit_code, product_name, quantity, expiry_date, theme } = params;
+  const palette = getThemeFlexColors(theme);
 
   const bodyContents: Record<string, unknown>[] = [
     textComponent(product_name, {
@@ -242,7 +245,7 @@ export function depositRequestApprovedFlex(
     }),
     separatorComponent(),
     labelValueRow('ลูกค้า', customer_name),
-    labelValueRow('รหัสฝาก', deposit_code, { color: COLORS.green }),
+    labelValueRow('รหัสฝาก', deposit_code, { color: palette.accent }),
     labelValueRow('จำนวน', `${formatNumber(quantity)} ขวด`),
   ];
   if (expiry_date) {
@@ -255,7 +258,7 @@ export function depositRequestApprovedFlex(
     contents: {
       type: 'bubble',
       size: 'mega',
-      header: headerBox('รับฝากเหล้าสำเร็จ', COLORS.green),
+      header: headerBox('รับฝากเหล้าสำเร็จ', palette.brand, palette.brandText),
       body: bodyBox(bodyContents),
       footer: footerBox([
         textComponent('แสดงรหัสฝากนี้เมื่อต้องการเบิก', {
@@ -266,7 +269,7 @@ export function depositRequestApprovedFlex(
         }),
       ]),
       styles: {
-        header: { backgroundColor: COLORS.green },
+        header: { backgroundColor: palette.brand },
         footer: { separator: true },
       },
     },
@@ -277,11 +280,17 @@ interface DepositRequestRejectedParams {
   customer_name: string;
   store_name: string;
   reason?: string | null;
+  /** Per-store theme — only used for body accent; rejection header stays red */
+  theme?: CustomerThemeKey | null;
 }
 
 /**
  * Flex pushed to the customer when staff rejects their LIFF deposit_request.
  * Red accent. No deposit_code — there isn't one yet.
+ *
+ * Header stays red (universal "this didn't go through" signal) regardless
+ * of theme — only the body store-name accent picks up the palette so the
+ * message still feels on-brand.
  */
 export function depositRequestRejectedFlex(
   params: DepositRequestRejectedParams,
@@ -343,14 +352,18 @@ interface DepositConfirmedParams {
   quantity: number;
   store_name: string;
   expiry_date: string;
+  /** Per-store theme — brand-color the success header + accent code */
+  theme?: CustomerThemeKey | null;
 }
 
 /**
  * Flex message sent to customer when the bar confirms their deposit.
- * Green accent.
+ * Header takes the brand color from the store's theme; deposit-code accent
+ * matches.
  */
 export function depositConfirmedFlex(params: DepositConfirmedParams): FlexMessage {
-  const { deposit_code, product_name, quantity, store_name, expiry_date } = params;
+  const { deposit_code, product_name, quantity, store_name, expiry_date, theme } = params;
+  const palette = getThemeFlexColors(theme);
 
   return {
     type: 'flex',
@@ -358,7 +371,7 @@ export function depositConfirmedFlex(params: DepositConfirmedParams): FlexMessag
     contents: {
       type: 'bubble',
       size: 'mega',
-      header: headerBox('ฝากเหล้าสำเร็จ', COLORS.green),
+      header: headerBox('ฝากเหล้าสำเร็จ', palette.brand, palette.brandText),
       body: bodyBox([
         textComponent(product_name, {
           size: 'xl',
@@ -372,7 +385,7 @@ export function depositConfirmedFlex(params: DepositConfirmedParams): FlexMessag
           margin: 'sm',
         }),
         separatorComponent(),
-        labelValueRow('รหัสฝาก', deposit_code, { color: COLORS.green }),
+        labelValueRow('รหัสฝาก', deposit_code, { color: palette.accent }),
         labelValueRow('จำนวน', `${formatNumber(quantity)} ขวด`),
         labelValueRow('หมดอายุ', formatThaiDate(expiry_date)),
       ]),
@@ -385,7 +398,7 @@ export function depositConfirmedFlex(params: DepositConfirmedParams): FlexMessag
         }),
       ]),
       styles: {
-        header: { backgroundColor: COLORS.green },
+        header: { backgroundColor: palette.brand },
         footer: { separator: true },
       },
     },
