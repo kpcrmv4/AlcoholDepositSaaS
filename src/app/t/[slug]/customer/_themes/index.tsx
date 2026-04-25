@@ -22,6 +22,8 @@ import { SumiView } from './sumi/chrome';
 import { SumiBottleList } from './sumi/cards';
 import { SunsetView } from './sunset/chrome';
 import { SunsetBottleList } from './sunset/cards';
+import { CrimsonView } from './crimson/chrome';
+import { CrimsonBottleList } from './crimson/cards';
 import type { ThemeViewProps } from './types';
 
 export function ThemedCustomerView(props: ThemeViewProps) {
@@ -43,6 +45,12 @@ export function ThemedCustomerView(props: ThemeViewProps) {
         <SunsetView props={props}>
           <SunsetBottleList props={props} />
         </SunsetView>
+      );
+    case 'crimson':
+      return (
+        <CrimsonView props={props}>
+          <CrimsonBottleList props={props} />
+        </CrimsonView>
       );
     case 'amber':
     default:
