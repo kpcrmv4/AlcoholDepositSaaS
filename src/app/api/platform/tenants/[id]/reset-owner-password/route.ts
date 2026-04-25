@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requirePlatformAdmin } from '@/lib/tenant/server';
 
+/** Match the tenant-creation flow — owners change it on first login. */
 function generateTempPassword(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  const bytes = crypto.randomBytes(12);
-  let out = '';
-  for (let i = 0; i < 12; i++) {
-    out += chars[bytes[i] % chars.length];
-  }
-  return out;
+  return '123456';
 }
 
 /**

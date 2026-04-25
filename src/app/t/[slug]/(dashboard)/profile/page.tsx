@@ -26,6 +26,9 @@ import {
   Pencil,
   Check,
   X,
+  Key,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { ROLE_LABELS } from '@/types/roles';
 
@@ -74,6 +77,12 @@ export default function ProfilePage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Change-password state
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -151,6 +160,41 @@ export default function ProfilePage() {
       toast({ type: 'error', title: t('nicknameSaveFailed') });
     } finally {
       setIsSavingProfile(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Change password
+  // ---------------------------------------------------------------------------
+
+  const handleChangePassword = async () => {
+    if (newPassword.length < 6) {
+      toast({ type: 'error', title: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ type: 'error', title: 'รหัสผ่านและการยืนยันไม่ตรงกัน' });
+      return;
+    }
+
+    setIsSavingPassword(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowPassword(false);
+      toast({ type: 'success', title: 'เปลี่ยนรหัสผ่านเรียบร้อย' });
+    } catch (err) {
+      toast({
+        type: 'error',
+        title: 'เปลี่ยนรหัสผ่านไม่สำเร็จ',
+        message: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setIsSavingPassword(false);
     }
   };
 
@@ -530,6 +574,65 @@ export default function ProfilePage() {
             onChange={() => togglePref('notify_promotions')}
           />
         </div>
+      </Card>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Change password                                                    */}
+      {/* ------------------------------------------------------------------ */}
+      <Card padding="none">
+        <CardHeader
+          title="เปลี่ยนรหัสผ่าน"
+          description="ควรเปลี่ยนจากรหัสชั่วคราว (123456) หลังเข้าระบบครั้งแรก"
+        />
+        <CardContent className="space-y-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">
+              รหัสผ่านใหม่
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="อย่างน้อย 6 ตัวอักษร"
+                autoComplete="new-password"
+                disabled={isSavingPassword}
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 pr-11 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                tabIndex={-1}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">
+              ยืนยันรหัสผ่านใหม่
+            </label>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              disabled={isSavingPassword}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button
+              onClick={handleChangePassword}
+              isLoading={isSavingPassword}
+              disabled={!newPassword || !confirmPassword}
+              icon={<Key className="h-4 w-4" />}
+            >
+              บันทึกรหัสผ่าน
+            </Button>
+          </div>
+        </CardContent>
       </Card>
 
       {/* ------------------------------------------------------------------ */}
