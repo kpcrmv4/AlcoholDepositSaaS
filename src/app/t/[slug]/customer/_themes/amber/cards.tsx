@@ -81,39 +81,58 @@ function AmberCard({
             ? 'text-amber-300'
             : 'text-emerald-300/85';
 
-  // Pending request — clickable card opens detail/cancel modal
+  // pending_confirm rows split:
+  //   isRequest=true  → deposit_request waiting for staff approval; tap
+  //                     opens the cancel modal
+  //   isRequest=false → real deposit awaiting bar confirm; info-only
+  const tappable = isPending && d.isRequest;
+
   if (isPending) {
+    const pendingInner = (
+      <div className="flex gap-3">
+        <AmberBottleSvg hue="#7a3b0f" percent={100} pending />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="amber-serif truncate text-[15px] font-semibold text-amber-50">
+                {d.productName}
+              </h3>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                {d.tableNumber && (
+                  <span className="rounded-md bg-amber-200/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200/85">
+                    โต๊ะ {d.tableNumber}
+                  </span>
+                )}
+              </div>
+            </div>
+            <AmberStatusChip status="pending_confirm" t={t} />
+          </div>
+          <p className="mt-2 text-[11px] text-amber-300/80">
+            {tappable ? t('tapToCancel') : t('waitingStaffConfirm')}
+          </p>
+        </div>
+      </div>
+    );
+
+    const cardCls =
+      'w-full overflow-hidden rounded-2xl border border-amber-300/25 bg-gradient-to-b from-amber-950/70 to-[#1a130d] p-3.5 text-left shadow-lg shadow-black/30';
+
+    if (tappable) {
+      return (
+        <li>
+          <button
+            type="button"
+            onClick={() => onOpenDetail(d)}
+            className={'customer-tap transition hover:border-amber-300/40 ' + cardCls}
+          >
+            {pendingInner}
+          </button>
+        </li>
+      );
+    }
     return (
       <li>
-        <button
-          type="button"
-          onClick={() => onOpenDetail(d)}
-          className="customer-tap w-full overflow-hidden rounded-2xl border border-amber-300/25 bg-gradient-to-b from-amber-950/70 to-[#1a130d] p-3.5 text-left shadow-lg shadow-black/30 transition hover:border-amber-300/40"
-        >
-          <div className="flex gap-3">
-            <AmberBottleSvg hue="#7a3b0f" percent={100} pending />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h3 className="amber-serif truncate text-[15px] font-semibold text-amber-50">
-                    {d.productName}
-                  </h3>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    {d.tableNumber && (
-                      <span className="rounded-md bg-amber-200/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200/85">
-                        โต๊ะ {d.tableNumber}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <AmberStatusChip status="pending_confirm" t={t} />
-              </div>
-              <p className="mt-2 text-[11px] text-amber-300/80">
-                แตะเพื่อดูรายละเอียด · ยกเลิกคำขอ
-              </p>
-            </div>
-          </div>
-        </button>
+        <div className={cardCls}>{pendingInner}</div>
       </li>
     );
   }

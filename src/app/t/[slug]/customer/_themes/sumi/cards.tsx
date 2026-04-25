@@ -147,7 +147,7 @@ function SumiRow({
                 )}
               </div>
             </>
-          ) : (
+          ) : d.isRequest ? (
             <button
               type="button"
               onClick={() => onOpenDetail(d)}
@@ -158,8 +158,19 @@ function SumiRow({
                   โต๊ะ {d.tableNumber}
                 </span>
               )}
-              <span className="sumi-text-link text-[11px]">แตะเพื่อยกเลิก</span>
+              <span className="sumi-text-link text-[11px]">{t('tapToCancel')}</span>
             </button>
+          ) : (
+            <div className="mt-2 flex items-center gap-2">
+              {d.tableNumber && (
+                <span className="border border-stone-300/70 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-stone-700">
+                  โต๊ะ {d.tableNumber}
+                </span>
+              )}
+              <span className="text-[11px] font-medium text-stone-500">
+                {t('waitingStaffConfirm')}
+              </span>
+            </div>
           )}
         </div>
       </div>

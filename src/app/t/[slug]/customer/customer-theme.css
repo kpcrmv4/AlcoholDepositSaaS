@@ -288,8 +288,27 @@
   outline: none;
   transition: all 0.15s ease;
 }
-.theme-input { height: 44px; padding: 0 14px; font-size: 14px; }
-.theme-textarea { padding: 10px 14px; font-size: 14px; min-height: 88px; }
+/* Use padding longhand so Tailwind's pl-{n}/pr-{n} utilities can override
+ * just the side that needs more room (e.g. pl-10 to clear a leading icon
+ * absolutely positioned at left-3.5). The earlier `padding: 0 14px`
+ * shorthand was beating those utilities and dragging the placeholder text
+ * back under the magnifying-glass icon. */
+.theme-input {
+  height: 44px;
+  padding-top: 0;
+  padding-right: 14px;
+  padding-bottom: 0;
+  padding-left: 14px;
+  font-size: 14px;
+}
+.theme-textarea {
+  padding-top: 10px;
+  padding-right: 14px;
+  padding-bottom: 10px;
+  padding-left: 14px;
+  font-size: 14px;
+  min-height: 88px;
+}
 .theme-input::placeholder,
 .theme-textarea::placeholder { color: var(--c-input-placeholder); }
 .theme-input:focus,
