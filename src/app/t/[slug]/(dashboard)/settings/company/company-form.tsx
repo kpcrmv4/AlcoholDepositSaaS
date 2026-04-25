@@ -46,7 +46,7 @@ export default function CompanyForm({ tenant }: { tenant: Tenant }) {
     >
       {msg && <div className="text-sm">{msg}</div>}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="ชื่อบริษัท *" name="company_name" required defaultValue={tenant.company_name} />
         <Field label="ชื่อนิติบุคคล" name="legal_name" defaultValue={tenant.legal_name ?? ''} />
         <Field label="เลขผู้เสียภาษี" name="tax_id" defaultValue="" />
@@ -58,7 +58,7 @@ export default function CompanyForm({ tenant }: { tenant: Tenant }) {
 
       <div>
         <div className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-300">Branding</div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="สีหลัก" name="brand_color" type="color" defaultValue={tenant.brand_color ?? '#4f46e5'} />
           <Field label="โลโก้ URL" name="logo_url" defaultValue={tenant.logo_url ?? ''} />
         </div>

@@ -27,14 +27,14 @@ export default async function BranchesPage({ params }: Params) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-sm">
-        <Link href={`/t/${slug}`} className="text-gray-500 hover:underline dark:text-gray-400">
+        <Link href={`/t/${slug}/settings`} className="text-gray-500 hover:underline dark:text-gray-400">
           ← Settings
         </Link>
         <span className="text-gray-400">/</span>
         <span className="font-medium">สาขา</span>
       </div>
 
-      <div className="flex items-center justify-between rounded border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex flex-col gap-3 rounded border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-2xl font-semibold">
             {activeCount} <span className="text-gray-400">/ {tenant.max_branches}</span>
@@ -65,15 +65,15 @@ export default async function BranchesPage({ params }: Params) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="border-b border-gray-200 bg-gray-50 text-left dark:border-gray-800 dark:bg-gray-950">
             <tr>
-              <th className="px-4 py-2 font-medium">รหัส</th>
-              <th className="px-4 py-2 font-medium">ชื่อสาขา</th>
-              <th className="px-4 py-2 font-medium">ประเภท</th>
-              <th className="px-4 py-2 font-medium">สถานะ</th>
-              <th className="px-4 py-2 font-medium">สร้างเมื่อ</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">รหัส</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">ชื่อสาขา</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">ประเภท</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">สถานะ</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">สร้างเมื่อ</th>
             </tr>
           </thead>
           <tbody>

@@ -58,7 +58,7 @@ export default async function PermissionsPage({ params }: Params) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-sm">
-        <Link href={`/t/${slug}`} className="text-gray-500 hover:underline dark:text-gray-400">
+        <Link href={`/t/${slug}/settings`} className="text-gray-500 hover:underline dark:text-gray-400">
           ← {t('back')}
         </Link>
         <span className="text-gray-400">/</span>

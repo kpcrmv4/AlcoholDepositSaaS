@@ -56,7 +56,7 @@ export default async function FeaturesPage({ params }: Params) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-sm">
-        <Link href={`/t/${slug}`} className="text-gray-500 hover:underline dark:text-gray-400">
+        <Link href={`/t/${slug}/settings`} className="text-gray-500 hover:underline dark:text-gray-400">
           ← Settings
         </Link>
         <span className="text-gray-400">/</span>
@@ -81,7 +81,7 @@ export default async function FeaturesPage({ params }: Params) {
             <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
               {groupName}
             </div>
-            <ul className="grid grid-cols-2 gap-2">
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {items.map((m) => (
                 <li
                   key={m.key}

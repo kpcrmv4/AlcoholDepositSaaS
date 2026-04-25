@@ -83,7 +83,7 @@ export default function LineForm({ initial }: { initial: LineConfig }) {
         help="‘แยกต่อสาขา’ = เติม LINE config ที่หน้า settings ของแต่ละสาขา. ‘OA เดียว’ = ใช้ค่าในหน้านี้กับทุกสาขา"
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Basic ID (เช่น @company)" name="line_basic_id" defaultValue={initial.line_basic_id} />
         <Field label="Channel ID" name="line_channel_id" defaultValue={initial.line_channel_id} />
         <Field label="LIFF ID" name="liff_id" defaultValue={initial.liff_id} />
