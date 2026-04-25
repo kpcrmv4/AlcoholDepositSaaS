@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requirePlatformAdmin } from '@/lib/tenant/server';
 
@@ -64,14 +63,13 @@ export async function GET(request: NextRequest) {
  * ambiguous characters (0/O, 1/I/l) removed so it's safe to dictate over
  * LINE / SMS without confusion.
  */
+/**
+ * Temp password handed to the super admin when provisioning a new tenant.
+ * Owners are expected to change it on first login, so a memorable shared
+ * secret is friendlier to communicate over LINE/SMS than a random string.
+ */
 function generateTempPassword(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  const bytes = crypto.randomBytes(12);
-  let out = '';
-  for (let i = 0; i < 12; i++) {
-    out += chars[bytes[i] % chars.length];
-  }
-  return out;
+  return '123456';
 }
 
 /**
