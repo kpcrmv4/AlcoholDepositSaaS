@@ -191,6 +191,8 @@ CREATE TABLE stores (
   manager_id           UUID REFERENCES profiles(id),
   is_central           BOOLEAN DEFAULT false,
   active               BOOLEAN DEFAULT true,
+  customer_theme       TEXT DEFAULT 'amber'
+                       CHECK (customer_theme IN ('amber','neon','sumi','sunset')),
   created_at           TIMESTAMPTZ DEFAULT now(),
 
   UNIQUE (tenant_id, store_code)

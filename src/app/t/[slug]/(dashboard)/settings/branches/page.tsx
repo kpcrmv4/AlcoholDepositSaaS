@@ -2,6 +2,11 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { createServiceClient } from '@/lib/supabase/server';
 import { resolveTenantBySlug } from '@/lib/tenant/resolve';
+import {
+  CUSTOMER_THEMES,
+  isCustomerTheme,
+  DEFAULT_CUSTOMER_THEME,
+} from '@/lib/customer-themes';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +22,7 @@ export default async function BranchesPage({ params }: Params) {
   const svc = createServiceClient();
   const { data: stores } = await svc
     .from('stores')
-    .select('id, store_code, store_name, is_central, active, created_at')
+    .select('id, store_code, store_name, is_central, active, customer_theme, created_at')
     .eq('tenant_id', tenant.id)
     .order('created_at', { ascending: true });
 
@@ -72,38 +77,64 @@ export default async function BranchesPage({ params }: Params) {
               <th className="whitespace-nowrap px-4 py-2 font-medium">ชื่อสาขา</th>
               <th className="whitespace-nowrap px-4 py-2 font-medium">ประเภท</th>
               <th className="whitespace-nowrap px-4 py-2 font-medium">สถานะ</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">ธีมหน้าลูกค้า</th>
               <th className="whitespace-nowrap px-4 py-2 font-medium">สร้างเมื่อ</th>
             </tr>
           </thead>
           <tbody>
-            {(stores ?? []).map((s) => (
-              <tr key={s.id} className="border-b border-gray-100 dark:border-gray-800">
-                <td className="px-4 py-2 font-mono text-xs">{s.store_code}</td>
-                <td className="px-4 py-2">{s.store_name}</td>
-                <td className="px-4 py-2">
-                  {s.is_central ? (
-                    <span className="rounded bg-indigo-100 px-2 py-0.5 text-xs text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
-                      คลังกลาง
-                    </span>
-                  ) : (
-                    <span className="text-xs text-gray-500">สาขา</span>
-                  )}
-                </td>
-                <td className="px-4 py-2">
-                  {s.active ? (
-                    <span className="text-emerald-700 dark:text-emerald-400">active</span>
-                  ) : (
-                    <span className="text-gray-400">inactive</span>
-                  )}
-                </td>
-                <td className="px-4 py-2 text-xs text-gray-500">
-                  {new Date(s.created_at).toLocaleDateString('th-TH')}
-                </td>
-              </tr>
-            ))}
+            {(stores ?? []).map((s) => {
+              const themeKey = isCustomerTheme(s.customer_theme)
+                ? s.customer_theme
+                : DEFAULT_CUSTOMER_THEME;
+              const theme = CUSTOMER_THEMES[themeKey];
+              return (
+                <tr key={s.id} className="border-b border-gray-100 dark:border-gray-800">
+                  <td className="px-4 py-2 font-mono text-xs">{s.store_code}</td>
+                  <td className="px-4 py-2">{s.store_name}</td>
+                  <td className="px-4 py-2">
+                    {s.is_central ? (
+                      <span className="rounded bg-indigo-100 px-2 py-0.5 text-xs text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                        คลังกลาง
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-500">สาขา</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
+                    {s.active ? (
+                      <span className="text-emerald-700 dark:text-emerald-400">active</span>
+                    ) : (
+                      <span className="text-gray-400">inactive</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
+                    <Link
+                      href={`/t/${slug}/settings/store/${s.id}/theme`}
+                      className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-2 py-0.5 text-xs hover:border-indigo-400 hover:bg-indigo-50 dark:border-gray-700 dark:hover:border-indigo-500 dark:hover:bg-indigo-950"
+                    >
+                      <span className="flex -space-x-1">
+                        {theme.swatch.slice(0, 3).map((c, i) => (
+                          <span
+                            key={i}
+                            className="h-3 w-3 rounded-full ring-1 ring-white dark:ring-gray-900"
+                            style={{ background: c }}
+                          />
+                        ))}
+                      </span>
+                      <span className="text-gray-700 dark:text-gray-200">
+                        {theme.label}
+                      </span>
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2 text-xs text-gray-500">
+                    {new Date(s.created_at).toLocaleDateString('th-TH')}
+                  </td>
+                </tr>
+              );
+            })}
             {(stores ?? []).length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
                   ยังไม่มีสาขา
                 </td>
               </tr>

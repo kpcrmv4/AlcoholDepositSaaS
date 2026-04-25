@@ -230,9 +230,9 @@ function Tag({
 function StatsRow() {
   return (
     <div className="mb-5 grid grid-cols-3 gap-2.5">
-      <Stat label="ฝากอยู่" value="2" icon={<Wine />} accent="violet" />
-      <Stat label="ใกล้หมด" value="1" icon={<Flame />} accent="coral" />
-      <Stat label="รอเบิก" value="1" icon={<Hourglass />} accent="cyan" />
+      <Stat label="ฝากอยู่" value="2" icon={<Wine className="h-4 w-4" />} accent="violet" />
+      <Stat label="ใกล้หมด" value="1" icon={<Flame className="h-4 w-4" />} accent="coral" />
+      <Stat label="รอเบิก" value="1" icon={<Hourglass className="h-4 w-4" />} accent="cyan" />
     </div>
   );
 }
@@ -280,15 +280,15 @@ function Stat({
         palette.glow
       }
     >
-      <div className={'mb-1 inline-flex h-5 w-5 items-center justify-center ' + palette.icon}>
-        <span className="h-3.5 w-3.5">{icon}</span>
+      <div className={'absolute left-3 top-3 ' + palette.icon}>{icon}</div>
+      <div className="flex flex-col items-end text-right">
+        <p className="neon-display text-3xl font-black leading-none text-white">
+          {value}
+        </p>
+        <p className="mt-2 text-[10.5px] font-semibold uppercase tracking-wider text-violet-200/55">
+          {label}
+        </p>
       </div>
-      <p className="neon-display text-2xl font-black leading-none text-white">
-        {value}
-      </p>
-      <p className="mt-1 text-[10.5px] font-semibold uppercase tracking-wider text-violet-200/55">
-        {label}
-      </p>
     </div>
   );
 }
