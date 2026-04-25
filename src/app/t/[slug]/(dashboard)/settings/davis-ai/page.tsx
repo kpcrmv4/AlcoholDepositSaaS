@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/auth-store';
+import { useTenant } from '@/lib/tenant';
 import {
   Button,
   Input,
@@ -42,6 +43,7 @@ export default function DavisAiSettingsPage() {
   const router = useRouter();
   const t = useTranslations('settings.davisAi');
   const { user } = useAuthStore();
+  const tenant = useTenant();
   const isOwner = user?.role === 'owner';
 
   // Form state
@@ -69,10 +71,15 @@ export default function DavisAiSettingsPage() {
     setIsLoading(true);
     const supabase = createClient();
 
+    // Bot name lives in per-tenant system_settings (no dedicated column on
+    // `tenants` for it). LIFF id is the canonical tenant column — we read it
+    // from the in-memory tenant context to avoid a second round-trip.
     const { data, error } = await supabase
       .from('system_settings')
       .select('key, value')
-      .in('key', [SYSTEM_KEYS.BOT_NAME, SYSTEM_KEYS.LIFF_ID]);
+      .eq('tenant_id', tenant.id)
+      .eq('key', SYSTEM_KEYS.BOT_NAME)
+      .maybeSingle();
 
     if (error) {
       toast({ type: 'error', title: t('loadError'), message: error.message });
@@ -80,15 +87,10 @@ export default function DavisAiSettingsPage() {
       return;
     }
 
-    const map: Record<string, string> = {};
-    for (const row of data || []) {
-      map[row.key] = row.value || '';
-    }
-
-    setBotName(map[SYSTEM_KEYS.BOT_NAME] || 'DAVIS Ai');
-    setLiffId(map[SYSTEM_KEYS.LIFF_ID] || '');
+    setBotName(data?.value || 'DAVIS Ai');
+    setLiffId(tenant.liff_id ?? '');
     setIsLoading(false);
-  }, [t]);
+  }, [t, tenant.id, tenant.liff_id]);
 
   useEffect(() => {
     if (isOwner) {
@@ -106,17 +108,37 @@ export default function DavisAiSettingsPage() {
     setIsSaving(true);
     const supabase = createClient();
 
-    const rows = [
-      { key: SYSTEM_KEYS.BOT_NAME, value: botName.trim() || 'DAVIS Ai' },
-      { key: SYSTEM_KEYS.LIFF_ID, value: liffId.trim() },
-    ];
-
-    const { error } = await supabase
+    // Save bot_name to per-tenant system_settings (PK is now (tenant_id, key)
+    // so the upsert needs both the tenant_id column and the matching
+    // composite onConflict key).
+    const { error: botErr } = await supabase
       .from('system_settings')
-      .upsert(rows, { onConflict: 'key' });
+      .upsert(
+        { tenant_id: tenant.id, key: SYSTEM_KEYS.BOT_NAME, value: botName.trim() || 'DAVIS Ai' },
+        { onConflict: 'tenant_id,key' },
+      );
 
-    if (error) {
-      toast({ type: 'error', title: t('saveError'), message: error.message });
+    // LIFF id lives on the tenants row. Use the tenant LINE API so the
+    // owner-permission check + audit log happen the same way as the
+    // dedicated /settings/line page.
+    const liffRes = await fetch('/api/tenant/line', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ liff_id: liffId.trim() || null }),
+    });
+
+    let liffErrMsg: string | null = null;
+    if (!liffRes.ok) {
+      const body = await liffRes.json().catch(() => ({}));
+      liffErrMsg = body.error || liffRes.statusText;
+    }
+
+    if (botErr || liffErrMsg) {
+      toast({
+        type: 'error',
+        title: t('saveError'),
+        message: botErr?.message ?? liffErrMsg ?? '',
+      });
     } else {
       toast({ type: 'success', title: t('saveSuccess') });
     }
