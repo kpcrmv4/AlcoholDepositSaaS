@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { useState } from 'react';
-import { useTenantRouter } from '@/lib/tenant';
+import { useTenantRouter, useTenant } from '@/lib/tenant';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/auth-store';
 import {
@@ -29,6 +29,7 @@ import {
 export default function CreateStoreWizardPage() {
   const t = useTranslations('settings');
   const router = useTenantRouter();
+  const tenant = useTenant();
   const { user } = useAuthStore();
 
   const steps = [
@@ -72,6 +73,7 @@ export default function CreateStoreWizardPage() {
     const { data: store, error: storeError } = await supabase
       .from('stores')
       .insert({
+        tenant_id: tenant.id,
         store_code: storeCode.trim().toUpperCase(),
         store_name: storeName.trim(),
         is_central: isCentral,
