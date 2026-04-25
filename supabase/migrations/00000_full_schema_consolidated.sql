@@ -1405,6 +1405,56 @@ CREATE TRIGGER trg_commission_payments_tenant_consistency
   BEFORE INSERT OR UPDATE OF store_id, tenant_id ON commission_payments
   FOR EACH ROW EXECUTE FUNCTION enforce_tenant_store_consistency();
 
+-- ─── Auto-fill tenant_id for tables that reference store via from_store_id   ─
+-- (transfers, borrows, hq_deposits) or whose store_id is nullable             ─
+-- (audit_logs, notifications). Picks the right FK column per table name.     ─
+-- For null-store rows on audit_logs/notifications the caller MUST supply      ─
+-- tenant_id explicitly — the trigger raises if neither is available.          ─
+CREATE OR REPLACE FUNCTION enforce_tenant_via_any_store()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_tenant UUID;
+  v_store_id UUID;
+BEGIN
+  IF TG_TABLE_NAME IN ('audit_logs', 'notifications') THEN
+    v_store_id := NEW.store_id;
+  ELSIF TG_TABLE_NAME IN ('hq_deposits', 'transfers', 'borrows') THEN
+    v_store_id := NEW.from_store_id;
+  END IF;
+
+  IF v_store_id IS NOT NULL THEN
+    SELECT tenant_id INTO v_tenant FROM public.stores WHERE id = v_store_id;
+  END IF;
+
+  IF NEW.tenant_id IS NULL THEN
+    IF v_tenant IS NULL THEN
+      RAISE EXCEPTION 'tenant_id required on %: cannot infer from store reference', TG_TABLE_NAME;
+    END IF;
+    NEW.tenant_id := v_tenant;
+  ELSIF v_tenant IS NOT NULL AND NEW.tenant_id <> v_tenant THEN
+    RAISE EXCEPTION 'tenant_id mismatch on %: got %, expected % (from store)', TG_TABLE_NAME, NEW.tenant_id, v_tenant;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER trg_audit_logs_tenant_consistency
+  BEFORE INSERT OR UPDATE ON audit_logs
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_via_any_store();
+CREATE TRIGGER trg_notifications_tenant_consistency
+  BEFORE INSERT OR UPDATE ON notifications
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_via_any_store();
+CREATE TRIGGER trg_hq_deposits_tenant_consistency
+  BEFORE INSERT OR UPDATE ON hq_deposits
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_via_any_store();
+CREATE TRIGGER trg_transfers_tenant_consistency
+  BEFORE INSERT OR UPDATE ON transfers
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_via_any_store();
+CREATE TRIGGER trg_borrows_tenant_consistency
+  BEFORE INSERT OR UPDATE ON borrows
+  FOR EACH ROW EXECUTE FUNCTION enforce_tenant_via_any_store();
+
 -- ─── Cross-tenant transfer/borrow guard ───
 CREATE OR REPLACE FUNCTION enforce_within_tenant_pair()
 RETURNS TRIGGER AS $$

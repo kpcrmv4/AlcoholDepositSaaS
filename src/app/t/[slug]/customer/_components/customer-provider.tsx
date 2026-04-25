@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { useTenantMaybe } from '@/lib/tenant';
 
 interface StoreContext {
   /** store_code passed via ?store=XX (from the staff-shared LIFF URL) */
@@ -86,17 +87,15 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   }
 
   // -------------------------------------------------------------------------
-  // Fetch the central LIFF ID from system_settings
+  // The LIFF ID lives on tenants.liff_id and is provided via TenantProvider
+  // (the customer route is wrapped by /t/[slug]/layout.tsx). Falling back to
+  // the legacy /api/system-settings/public endpoint kept the old behaviour
+  // working when context was unavailable, but in the multi-tenant model we
+  // ALWAYS have it via context, so just read it directly.
   // -------------------------------------------------------------------------
-  async function fetchCentralLiffId(): Promise<string> {
-    try {
-      const res = await fetch('/api/system-settings/public');
-      if (!res.ok) return '';
-      const data = await res.json();
-      return (data.liff_id as string) || '';
-    } catch {
-      return '';
-    }
+  const tenantFromCtx = useTenantMaybe();
+  function fetchCentralLiffId(): string {
+    return tenantFromCtx?.liff_id ?? '';
   }
 
   async function initAuth() {
