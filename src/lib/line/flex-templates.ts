@@ -138,6 +138,135 @@ function footerBox(contents: Record<string, unknown>[]): FlexBox {
 }
 
 // ---------------------------------------------------------------------------
+// depositRequestApprovedFlex / depositRequestRejectedFlex
+// ---------------------------------------------------------------------------
+
+interface DepositRequestApprovedParams {
+  customer_name: string;
+  store_name: string;
+  deposit_code: string;
+  product_name: string;
+  quantity: number;
+  expiry_date: string | null;
+}
+
+/**
+ * Flex pushed to the customer when staff approves their LIFF deposit_request
+ * and the deposit is registered into the system. Green accent — same visual
+ * language as depositConfirmedFlex but worded as "received & registered" so
+ * the customer knows the staff has accepted the request.
+ */
+export function depositRequestApprovedFlex(
+  params: DepositRequestApprovedParams,
+): FlexMessage {
+  const { customer_name, store_name, deposit_code, product_name, quantity, expiry_date } = params;
+
+  const bodyContents: Record<string, unknown>[] = [
+    textComponent(product_name, {
+      size: 'xl',
+      weight: 'bold',
+      color: COLORS.textPrimary,
+      wrap: true,
+    }),
+    textComponent(store_name, {
+      size: 'xs',
+      color: COLORS.textMuted,
+      margin: 'sm',
+    }),
+    separatorComponent(),
+    labelValueRow('ลูกค้า', customer_name),
+    labelValueRow('รหัสฝาก', deposit_code, { color: COLORS.green }),
+    labelValueRow('จำนวน', `${formatNumber(quantity)} ขวด`),
+  ];
+  if (expiry_date) {
+    bodyContents.push(labelValueRow('หมดอายุ', formatThaiDate(expiry_date)));
+  }
+
+  return {
+    type: 'flex',
+    altText: `รับฝากเหล้าสำเร็จ - ${product_name}`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: headerBox('รับฝากเหล้าสำเร็จ', COLORS.green),
+      body: bodyBox(bodyContents),
+      footer: footerBox([
+        textComponent('แสดงรหัสฝากนี้เมื่อต้องการเบิก', {
+          size: 'xs',
+          color: COLORS.textMuted,
+          wrap: true,
+          align: 'center',
+        }),
+      ]),
+      styles: {
+        header: { backgroundColor: COLORS.green },
+        footer: { separator: true },
+      },
+    },
+  };
+}
+
+interface DepositRequestRejectedParams {
+  customer_name: string;
+  store_name: string;
+  reason?: string | null;
+}
+
+/**
+ * Flex pushed to the customer when staff rejects their LIFF deposit_request.
+ * Red accent. No deposit_code — there isn't one yet.
+ */
+export function depositRequestRejectedFlex(
+  params: DepositRequestRejectedParams,
+): FlexMessage {
+  const { customer_name, store_name, reason } = params;
+
+  const bodyContents: Record<string, unknown>[] = [
+    textComponent('คำขอฝากเหล้าของคุณไม่ได้รับการอนุมัติ', {
+      size: 'md',
+      weight: 'bold',
+      color: COLORS.textPrimary,
+      wrap: true,
+    }),
+    textComponent(store_name, {
+      size: 'xs',
+      color: COLORS.textMuted,
+      margin: 'sm',
+    }),
+    separatorComponent(),
+    labelValueRow('ลูกค้า', customer_name),
+  ];
+  if (reason) {
+    bodyContents.push(labelValueRow('หมายเหตุ', reason));
+  }
+  bodyContents.push(
+    textComponent(
+      'หากมีข้อสงสัย กรุณาติดต่อพนักงานที่ร้านโดยตรง',
+      {
+        size: 'xs',
+        color: COLORS.textMuted,
+        wrap: true,
+        margin: 'lg',
+      },
+    ),
+  );
+
+  return {
+    type: 'flex',
+    altText: 'คำขอฝากเหล้าถูกปฏิเสธ',
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: headerBox('คำขอฝากเหล้าถูกปฏิเสธ', COLORS.red),
+      body: bodyBox(bodyContents),
+      styles: {
+        header: { backgroundColor: COLORS.red },
+      },
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // (a) depositConfirmedFlex
 // ---------------------------------------------------------------------------
 

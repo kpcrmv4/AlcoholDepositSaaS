@@ -206,6 +206,28 @@ export default function DepositRequestsPage() {
           },
           changed_by: user?.id || null,
         });
+
+        // Push approved Flex to customer's LINE inbox.
+        if (selectedRequest.line_user_id) {
+          fetch('/api/deposit-request/notify-customer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              requestId: selectedRequest.id,
+              action: 'approved',
+              deposits: [
+                {
+                  deposit_code: depositCode,
+                  product_name: selectedRequest.product_name,
+                  quantity: selectedRequest.quantity,
+                  expiry_date: expiryDateISO(durationDays),
+                },
+              ],
+            }),
+          }).catch((err) =>
+            console.error('[DepositRequests] notify-customer (approved) failed:', err),
+          );
+        }
       }
     } else {
       // Reject
@@ -226,6 +248,21 @@ export default function DepositRequestsPage() {
           new_value: { customer_name: selectedRequest.customer_name, product_name: selectedRequest.product_name, reason: approvalNotes || null },
           changed_by: user?.id || null,
         });
+
+        // Push rejected Flex to customer's LINE inbox (with optional reason).
+        if (selectedRequest.line_user_id) {
+          fetch('/api/deposit-request/notify-customer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              requestId: selectedRequest.id,
+              action: 'rejected',
+              reason: approvalNotes || undefined,
+            }),
+          }).catch((err) =>
+            console.error('[DepositRequests] notify-customer (rejected) failed:', err),
+          );
+        }
       }
     }
 

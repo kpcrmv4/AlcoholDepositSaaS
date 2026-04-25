@@ -433,6 +433,20 @@ export default function DepositPage() {
       changed_by: user.id,
     });
 
+    // Fire-and-forget: push a "rejected" Flex to the customer's LINE inbox.
+    if (rejectingRequest.line_user_id) {
+      fetch('/api/deposit-request/notify-customer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: rejectingRequest.id,
+          action: 'rejected',
+        }),
+      }).catch((err) =>
+        console.error('[DepositPage] Failed to notify customer of rejection:', err),
+      );
+    }
+
     toast({ type: 'success', title: 'ปฏิเสธคำขอแล้ว' });
     setRejectingRequest(null);
     setIsRejecting(false);

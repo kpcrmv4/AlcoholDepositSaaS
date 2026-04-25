@@ -535,6 +535,15 @@ export function DepositForm({ onBack, onSuccess, initialValues }: DepositFormPro
     setIsSubmitting(true);
     const supabase = createClient();
 
+    // Track each created deposit so we can push a Flex notification per
+    // deposit to the customer's LINE inbox after the request is approved.
+    const createdDeposits: Array<{
+      deposit_code: string;
+      product_name: string;
+      quantity: number;
+      expiry_date: string | null;
+    }> = [];
+
     try {
       const depositCodes: string[] = [];
 
@@ -542,6 +551,11 @@ export function DepositForm({ onBack, onSuccess, initialValues }: DepositFormPro
         const depositCode = await generateDepositCode(currentStoreId);
         depositCodes.push(depositCode);
         const qty = parseFloat(item.quantity);
+        const expiryISO = isNoDeposit
+          ? new Date().toISOString()
+          : isVip
+            ? null
+            : expiryDateISO(parseInt(expiryDays));
 
         const { error } = await supabase.from('deposits').insert({
           store_id: currentStoreId,
@@ -558,17 +572,20 @@ export function DepositForm({ onBack, onSuccess, initialValues }: DepositFormPro
           status: isNoDeposit ? 'expired' : 'pending_confirm',
           is_vip: isNoDeposit ? false : isVip,
           is_no_deposit: isNoDeposit,
-          expiry_date: isNoDeposit
-            ? new Date().toISOString()
-            : isVip
-              ? null
-              : expiryDateISO(parseInt(expiryDays)),
+          expiry_date: expiryISO,
           received_by: user.id,
           notes: isNoDeposit
             ? (notes.trim() ? `[${t('form.noDepositTag')}] ${notes.trim()}` : t('form.noDepositDefaultNote'))
             : (notes.trim() || null),
           customer_photo_url: customerPhotoUrl || null,
           received_photo_url: receivedPhotoUrl || null,
+        });
+
+        createdDeposits.push({
+          deposit_code: depositCode,
+          product_name: item.productName.trim(),
+          quantity: qty,
+          expiry_date: expiryISO,
         });
 
         if (error) {
@@ -601,7 +618,8 @@ export function DepositForm({ onBack, onSuccess, initialValues }: DepositFormPro
       }
 
       // If we're approving an existing deposit_request, mark it approved now
-      // that all deposits inserted successfully.
+      // that all deposits inserted successfully, then push a Flex message to
+      // the customer's LINE inbox so they know their request was accepted.
       if (isApproving && requestId) {
         const { error: reqError } = await supabase
           .from('deposit_requests')
@@ -622,6 +640,19 @@ export function DepositForm({ onBack, onSuccess, initialValues }: DepositFormPro
             changed_by: user?.id || null,
           });
         }
+
+        // Fire-and-forget: don't block the UI on LINE push.
+        fetch('/api/deposit-request/notify-customer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requestId,
+            action: 'approved',
+            deposits: createdDeposits,
+          }),
+        }).catch((err) =>
+          console.error('[DepositForm] Failed to notify customer via LINE:', err),
+        );
       }
 
       const itemsSummary = items
