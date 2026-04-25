@@ -96,8 +96,11 @@ export function MobileLayout({ children, stores }: MobileLayoutProps) {
     return groups;
   }, [modules]);
 
-  const isChatRoom = /^\/chat\/[^/]+/.test(pathname);
-  const isFullWidthPage = pathname.startsWith('/performance');
+  // pathname is tenant-scoped (e.g. /t/somchai/chat/abc) — strip the
+  // /t/{slug} prefix before matching logical paths.
+  const logicalPath = pathname.replace(/^\/t\/[^/]+/, '') || '/';
+  const isChatRoom = /^\/chat\/[^/]+/.test(logicalPath);
+  const isFullWidthPage = logicalPath.startsWith('/performance');
 
   function handleLogout() {
     logout();

@@ -16,7 +16,9 @@ interface DesktopLayoutProps {
 export function DesktopLayout({ children, stores, pageTitle }: DesktopLayoutProps) {
   const { sidebarOpen } = useAppStore();
   const pathname = usePathname();
-  const isChatRoom = /^\/chat\/[^/]+/.test(pathname);
+  // pathname is tenant-scoped (e.g. /t/somchai/chat/abc) — strip prefix.
+  const logicalPath = pathname.replace(/^\/t\/[^/]+/, '') || '/';
+  const isChatRoom = /^\/chat\/[^/]+/.test(logicalPath);
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
