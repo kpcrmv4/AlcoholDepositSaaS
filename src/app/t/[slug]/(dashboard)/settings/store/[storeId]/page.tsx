@@ -42,7 +42,7 @@ import {
   Bot,
 } from 'lucide-react';
 import { TenantLink as Link } from '@/lib/tenant/link';
-import { useTenantRouter } from '@/lib/tenant';
+import { useTenantRouter, useTenant, useEnabledModules } from '@/lib/tenant';
 import type { ReceiptSettings, PrintServerStatus, PrintServerWorkingHours } from '@/types/database';
 
 // ---------------------------------------------------------------------------
@@ -110,6 +110,10 @@ export default function StoreDetailSettingsPage() {
   const t = useTranslations('settings');
   const router = useTenantRouter();
   const params = useParams();
+  const tenant = useTenant();
+  const enabledModules = useEnabledModules();
+  const moduleEnabled = (key: string) => enabledModules.includes(key);
+  const isPerStoreLineMode = tenant.line_mode === 'per_store';
 
   const dayLabels: Record<string, string> = {
     Mon: t('storeDetail.dayMon'),
@@ -240,20 +244,18 @@ export default function StoreDetailSettingsPage() {
       setBorrowNotificationRoles(store.borrow_notification_roles || ['owner', 'manager']);
     }
 
-    // Load central LIFF ID (from system_settings)
-    const { data: sysRows } = await supabase
-      .from('system_settings')
-      .select('key, value')
-      .eq('key', 'davis_ai.liff_id')
-      .single();
-    setCentralLiffId((sysRows?.value as string) || '');
+    // Central LIFF ID is now per-tenant (tenants.liff_id), surfaced via context.
+    // The legacy `system_settings.davis_ai.liff_id` row is gone in the
+    // multi-tenant schema, so this no longer needs its own query.
+    setCentralLiffId(tenant.liff_id ?? '');
 
-    // Load store settings
+    // Load store settings — maybeSingle so a brand-new store (no row yet)
+    // doesn't trip a 406 from PostgREST.
     const { data: settings } = await supabase
       .from('store_settings')
       .select('*')
       .eq('store_id', storeId)
-      .single();
+      .maybeSingle();
 
     if (settings) {
       setNotifyTime(settings.notify_time_daily || '09:00');
@@ -286,12 +288,13 @@ export default function StoreDetailSettingsPage() {
       }
     }
 
-    // Load print server status + settings
+    // Load print server status + settings — maybeSingle for the same reason
+    // as store_settings above (no row until a print server registers).
     const { data: psStatus } = await supabase
       .from('print_server_status')
       .select('*')
       .eq('store_id', storeId)
-      .single();
+      .maybeSingle();
     setPrintServerStatus(psStatus as PrintServerStatus | null);
 
     // Check if service account exists
@@ -312,7 +315,7 @@ export default function StoreDetailSettingsPage() {
     setRecentPrintJobs((jobs as typeof recentPrintJobs) || []);
 
     setIsLoading(false);
-  }, [storeId]);
+  }, [storeId, tenant.liff_id]);
 
   useEffect(() => {
     loadData();
@@ -666,7 +669,10 @@ export default function StoreDetailSettingsPage() {
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 1.5: LINE OA ของสาขา (channel credentials)                  */}
+      {/* Only relevant when the tenant runs per_store mode — otherwise the   */}
+      {/* tenant-level OA is the source of truth.                              */}
       {/* ------------------------------------------------------------------ */}
+      {isPerStoreLineMode && (
       <Card padding="none">
         <CardHeader
           title={t('storeDetail.lineOaTitle')}
@@ -784,6 +790,7 @@ export default function StoreDetailSettingsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 2: กลุ่ม LINE แจ้งเตือน                                     */}
@@ -862,7 +869,9 @@ export default function StoreDetailSettingsPage() {
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 2.5: การแจ้งเตือนพนักงาน (Staff Notifications)               */}
+      {/* Borrow-specific. Only show when the borrow module is enabled.       */}
       {/* ------------------------------------------------------------------ */}
+      {moduleEnabled('borrow') && (
       <Card padding="none">
         <CardHeader
           title={t('storeDetail.staffNotifTitle')}
@@ -914,10 +923,12 @@ export default function StoreDetailSettingsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 3: ตั้งค่าสต๊อก (Stock Settings)                            */}
       {/* ------------------------------------------------------------------ */}
+      {moduleEnabled('stock') && (
       <Card padding="none">
         <CardHeader
           title={t('storeDetail.stockSettingsTitle')}
@@ -1036,10 +1047,12 @@ export default function StoreDetailSettingsPage() {
           />
         </CardContent>
       </Card>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 3.5: ตั้งค่าวันห้ามเบิกเหล้า (Withdrawal Blocked Days)     */}
       {/* ------------------------------------------------------------------ */}
+      {moduleEnabled('deposit') && (
       <Card padding="none">
         <CardHeader
           title={t('storeDetail.blockedDaysTitle')}
@@ -1083,10 +1096,12 @@ export default function StoreDetailSettingsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 4: ตั้งค่าแจ้งเตือนลูกค้า (Customer Notifications)          */}
       {/* ------------------------------------------------------------------ */}
+      {moduleEnabled('deposit') && (
       <Card padding="none">
         <CardHeader
           title={t('storeDetail.customerNotifTitle')}
@@ -1179,10 +1194,12 @@ export default function StoreDetailSettingsPage() {
           />
         </div>
       </Card>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 5: ตั้งค่าใบเสร็จ/ป้ายขวด (Receipt Settings)               */}
       {/* ------------------------------------------------------------------ */}
+      {moduleEnabled('deposit') && (
       <Card padding="none">
         <CardHeader
           title={t('storeDetail.receiptTitle')}
@@ -1298,10 +1315,13 @@ export default function StoreDetailSettingsPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 6: Print Server (Silent Printing)                          */}
+      {/* Print server runs the deposit-label workflow, gate accordingly.    */}
       {/* ------------------------------------------------------------------ */}
+      {moduleEnabled('deposit') && (
       <Card padding="none">
         <CardHeader
           title={t('storeDetail.printServerTitle')}
@@ -1553,6 +1573,7 @@ export default function StoreDetailSettingsPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 7: ตั้งค่า Audit Log (Audit Log Retention)                  */}
