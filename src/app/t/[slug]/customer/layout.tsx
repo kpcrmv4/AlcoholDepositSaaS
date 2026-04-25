@@ -1,7 +1,7 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useSyncExternalStore } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { TenantLink as Link } from '@/lib/tenant/link';
 import { useLocale } from 'next-intl';
 import { Wine, Loader2, Megaphone, Languages, Sun, Moon } from 'lucide-react';
@@ -13,8 +13,19 @@ import {
 } from './_components/customer-provider';
 import './customer-theme.css';
 
+/**
+ * The main customer home (`/t/{slug}/customer`) renders its own theme
+ * chrome (header / hero / FAB) per the store's customer_theme. For all
+ * the customer SUB-pages (deposit form, history, withdraw confirm,
+ * promotions) we keep the original slate/indigo header so they stay
+ * consistent — those pages haven't been re-themed yet.
+ */
+function isMainCustomerPath(pathname: string): boolean {
+  return /\/t\/[^/]+\/customer\/?$/.test(pathname);
+}
+
 // ---------------------------------------------------------------------------
-// Header — brand on the left, controls on the right
+// Header (slate/indigo) — used for sub-pages only.
 // ---------------------------------------------------------------------------
 function CustomerHeader() {
   const { store } = useCustomerAuth();
@@ -40,7 +51,6 @@ function CustomerHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-md dark:border-slate-800/70 dark:bg-slate-950/80">
       <div className="flex items-center gap-2 px-4 py-2.5">
-        {/* Brand */}
         <Link
           href={`/customer${navQuery}`}
           className="flex min-w-0 flex-1 items-center gap-2.5"
@@ -58,7 +68,6 @@ function CustomerHeader() {
           </div>
         </Link>
 
-        {/* Controls */}
         <div className="flex shrink-0 items-center gap-1">
           <Link
             href={`/customer/promotions${navQuery}`}
@@ -94,9 +103,11 @@ function ThemeToggleButton({
   theme: 'light' | 'dark';
   onToggle: () => void;
 }) {
-  // Avoid hydration mismatch — render an icon placeholder until mounted
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   return (
     <button
@@ -119,6 +130,19 @@ function ThemeToggleButton({
 }
 
 function CustomerLayoutInner({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const themed = isMainCustomerPath(pathname);
+
+  // On the main customer page the per-store theme owns header + background.
+  if (themed) {
+    return (
+      <CustomerProvider>
+        <main className="relative min-h-screen">{children}</main>
+      </CustomerProvider>
+    );
+  }
+
+  // Sub-pages keep the original slate/indigo chrome.
   return (
     <CustomerProvider>
       <div className="customer-theme relative flex min-h-screen flex-col">

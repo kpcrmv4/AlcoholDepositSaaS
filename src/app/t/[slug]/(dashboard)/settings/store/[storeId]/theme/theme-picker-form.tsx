@@ -146,9 +146,10 @@ export default function ThemePickerForm({
       </div>
 
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        หมายเหตุ: หน้า customer LIFF จริง (<code>/t/{'{slug}'}/customer</code>) ยัง
-        render ด้วยธีมเดียว — การแสดงผลตามธีมที่เลือกในแต่ละสาขาจะเปิดใช้งานในเฟสถัดไป
-        ตอนนี้กดปุ่ม <em>ดูตัวอย่างจริง</em> เพื่อเปิด preview ในแท็บใหม่
+        ธีมจะถูก apply กับหน้า customer LIFF จริงทันทีหลังบันทึก —
+        ลูกค้าที่เปิด <code>/t/{'{slug}'}/customer?store={'{store_code}'}</code>{' '}
+        จะเห็นธีมใหม่ภายใน 5 นาที (มี edge cache สั้นๆ ที่ store-lookup endpoint).
+        กดปุ่ม <em>ดูตัวอย่างจริง</em> เพื่อ preview แต่ละธีมในแท็บใหม่
       </p>
     </div>
   );
