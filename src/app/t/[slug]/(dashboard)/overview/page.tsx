@@ -14,6 +14,7 @@ import {
   startOfTodayBangkokISO,
 } from '@/lib/utils/date';
 import { Card, CardHeader, toast } from '@/components/ui';
+import { useEnabledModules } from '@/lib/tenant/enabled-modules';
 import {
   Store,
   Wine,
@@ -139,15 +140,17 @@ type ComparisonMetric = {
   key: keyof StoreStatus;
   labelKey: string;
   format: (v: number) => string;
+  /** Tenant module that gates this metric. When disabled the column is hidden. */
+  module?: string;
 };
 
 const COMPARISON_METRICS: ReadonlyArray<ComparisonMetric> = [
-  { key: 'depositsThisMonth', labelKey: 'compareDeposits', format: (v) => formatNumber(v) },
-  { key: 'withdrawalsThisMonth', labelKey: 'compareWithdrawals', format: (v) => formatNumber(v) },
-  { key: 'stockChecksThisMonth', labelKey: 'compareStockChecks', format: (v) => formatNumber(v) },
-  { key: 'commissionThisMonth', labelKey: 'compareCommission', format: (v) => `฿${formatNumber(Math.round(v))}` },
-  { key: 'activeDeposits', labelKey: 'compareActiveDeposits', format: (v) => formatNumber(v) },
-  { key: 'expiringDeposits', labelKey: 'comparePending', format: (v) => formatNumber(v) },
+  { key: 'depositsThisMonth', labelKey: 'compareDeposits', format: (v) => formatNumber(v), module: 'deposit' },
+  { key: 'withdrawalsThisMonth', labelKey: 'compareWithdrawals', format: (v) => formatNumber(v), module: 'deposit' },
+  { key: 'stockChecksThisMonth', labelKey: 'compareStockChecks', format: (v) => formatNumber(v), module: 'stock' },
+  { key: 'commissionThisMonth', labelKey: 'compareCommission', format: (v) => `฿${formatNumber(Math.round(v))}`, module: 'commission' },
+  { key: 'activeDeposits', labelKey: 'compareActiveDeposits', format: (v) => formatNumber(v), module: 'deposit' },
+  { key: 'expiringDeposits', labelKey: 'comparePending', format: (v) => formatNumber(v), module: 'deposit' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -635,6 +638,11 @@ export default function OverviewPage() {
   const t = useTranslations('overview');
   const { user } = useAuthStore();
   const { currentStoreId } = useAppStore();
+  // Tenant module allowlist — used to hide KPI cards, comparison metrics,
+  // and per-store sections for modules the platform admin has disabled.
+  const enabledModules = useEnabledModules();
+  const moduleEnabled = (key: string) =>
+    enabledModules ? enabledModules.has(key) : true;
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<OverviewData>({
     storeCount: 0,
@@ -1076,7 +1084,14 @@ export default function OverviewPage() {
 
       {/* ---- Per-Store Status (Owner only) ---- */}
       {/* ---- Per-store comparison chart (owner only) ---- */}
-      {isOwner && storeStatuses.length > 0 && (
+      {isOwner && storeStatuses.length > 0 && (() => {
+        // Only metrics whose underlying module is enabled. Hide the whole
+        // card if every metric got filtered out.
+        const visibleMetrics = COMPARISON_METRICS.filter(
+          (m) => !m.module || moduleEnabled(m.module),
+        );
+        if (visibleMetrics.length === 0) return null;
+        return (
         <Card padding="none">
           <CardHeader
             title={t('compareHeading')}
@@ -1085,7 +1100,7 @@ export default function OverviewPage() {
           <div className="p-4 sm:p-5">
             {/* Small multiples: per-metric ranking with horizontal bars */}
             <div className="grid grid-cols-1 divide-y divide-gray-100 dark:divide-gray-700 sm:grid-cols-2 sm:gap-5 sm:divide-y-0 lg:grid-cols-3">
-              {COMPARISON_METRICS.map((m) => {
+              {visibleMetrics.map((m) => {
                 const ranked = [...storeStatuses]
                   .map((s) => ({
                     storeId: s.id,
@@ -1138,7 +1153,7 @@ export default function OverviewPage() {
                   <thead>
                     <tr className="text-xs uppercase text-gray-500 dark:text-gray-400">
                       <th className="py-2 pr-3 text-left font-medium">{t('compareColBranch')}</th>
-                      {COMPARISON_METRICS.map((m) => (
+                      {visibleMetrics.map((m) => (
                         <th key={String(m.key)} className="px-2 py-2 text-center font-medium">
                           {t(m.labelKey)}
                         </th>
@@ -1149,7 +1164,7 @@ export default function OverviewPage() {
                     {storeStatuses.map((s) => (
                       <tr key={s.id} className="border-t border-gray-100 dark:border-gray-800">
                         <td className="py-2 pr-3 font-medium text-gray-900 dark:text-white">{s.name}</td>
-                        {COMPARISON_METRICS.map((m) => {
+                        {visibleMetrics.map((m) => {
                           const v = Number(s[m.key] ?? 0);
                           const allVals = storeStatuses.map((x) => Number(x[m.key] ?? 0));
                           const max = Math.max(...allVals, 1);
@@ -1175,7 +1190,8 @@ export default function OverviewPage() {
             </div>
           </div>
         </Card>
-      )}
+        );
+      })()}
 
       {isOwner && storeStatuses.length > 0 && (
         <div>
@@ -1280,6 +1296,7 @@ export default function OverviewPage() {
                   {/* Store body — only rendered when expanded */}
                   {isExpanded && (store.isCentral ? (
                     <div className="p-4 grid grid-cols-1 gap-4">
+                      {moduleEnabled('transfer') && (
                       <div className="space-y-2">
                         <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-teal-500">
                           <Warehouse className="h-3.5 w-3.5" />
@@ -1297,10 +1314,12 @@ export default function OverviewPage() {
                           )}
                         </div>
                       </div>
+                      )}
                     </div>
                   ) : (
                     <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Stock Module */}
+                      {/* Stock Module — only when 'stock' module is enabled */}
+                      {moduleEnabled('stock') && (
                       <div className="space-y-2">
                         <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-indigo-500">
                           <ClipboardCheck className="h-3.5 w-3.5" />
@@ -1327,8 +1346,10 @@ export default function OverviewPage() {
                           )}
                         </div>
                       </div>
+                      )}
 
-                      {/* Deposit & Transfer Module */}
+                      {/* Deposit & Transfer Module — show when either is enabled */}
+                      {(moduleEnabled('deposit') || moduleEnabled('transfer')) && (
                       <div className="space-y-2">
                         <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-500">
                           <Wine className="h-3.5 w-3.5" />
@@ -1379,8 +1400,10 @@ export default function OverviewPage() {
                           </div>
                         </div>
                       </div>
+                      )}
 
                       {/* Borrow Module */}
+                      {moduleEnabled('borrow') && (
                       <div className="space-y-2">
                         <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-purple-500">
                           <Repeat className="h-3.5 w-3.5" />
@@ -1440,8 +1463,10 @@ export default function OverviewPage() {
                           )}
                         </div>
                       </div>
+                      )}
 
                       {/* Commission Module */}
+                      {moduleEnabled('commission') && (
                       <div className="space-y-2">
                         <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-rose-500">
                           <HandCoins className="h-3.5 w-3.5" />
@@ -1457,6 +1482,7 @@ export default function OverviewPage() {
                           </div>
                         </div>
                       </div>
+                      )}
                     </div>
                   ))}
                 </div>
