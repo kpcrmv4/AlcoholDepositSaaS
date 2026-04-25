@@ -164,7 +164,11 @@ function labelValueRow(
 
 function headerBox(
   title: string,
-  headerColor: string,
+  // headerColor isn't applied here — it's rendered via the bubble's
+  // styles.header.backgroundColor by the caller — but we keep it on the
+  // signature so callers stay self-documenting.
+  _headerColor: string,
+  textColor: string = COLORS.white,
 ): FlexBox {
   return {
     type: 'box',
@@ -173,7 +177,7 @@ function headerBox(
       textComponent(title, {
         size: 'lg',
         weight: 'bold',
-        color: COLORS.white,
+        color: textColor,
       }),
     ],
     paddingAll: 'lg',
@@ -1490,6 +1494,8 @@ interface OpenDepositSystemParams {
   entry_url: string;
   /** Bot display name, defaults to "DAVIS Ai" */
   bot_name?: string;
+  /** Per-store theme controlling header + button color (defaults to amber) */
+  theme?: CustomerThemeKey | null;
 }
 
 export function openDepositSystemFlex(
@@ -1501,7 +1507,9 @@ export function openDepositSystemFlex(
     customer_name,
     entry_url,
     bot_name = 'DAVIS Ai',
+    theme,
   } = params;
+  const palette = getThemeFlexColors(theme);
 
   const hasItems = active_deposit_count > 0;
 
@@ -1532,7 +1540,7 @@ export function openDepositSystemFlex(
       labelValueRow(
         'รายการที่ยังอยู่',
         `${formatNumber(active_deposit_count)} รายการ`,
-        { color: COLORS.green },
+        { color: palette.accent },
       ),
       textComponent('กดปุ่มด้านล่างเพื่อดูรายละเอียด / ขอเบิก', {
         size: 'xs',
@@ -1567,7 +1575,7 @@ export function openDepositSystemFlex(
     contents: {
       type: 'bubble',
       size: 'mega',
-      header: headerBox(`🍾 ${bot_name}`, COLORS.green),
+      header: headerBox(`🍾 ${bot_name}`, palette.brand, palette.brandText),
       body: bodyBox(bodyContents),
       footer: footerBox([
         {
@@ -1578,7 +1586,7 @@ export function openDepositSystemFlex(
             uri: entry_url,
           },
           style: 'primary',
-          color: COLORS.green,
+          color: palette.brand,
           height: 'sm',
         },
         textComponent('พิมพ์ DEP-xxxxx เพื่อตรวจสอบรหัสฝาก', {
@@ -1590,7 +1598,7 @@ export function openDepositSystemFlex(
         }),
       ]),
       styles: {
-        header: { backgroundColor: COLORS.green },
+        header: { backgroundColor: palette.brand },
         footer: { separator: true },
       },
     },
