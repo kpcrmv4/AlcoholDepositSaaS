@@ -900,24 +900,121 @@ export default function DepositPage() {
         </div>
       </div>
 
+      {/* Pending customer LIFF requests rendered ABOVE the deposit list so
+          they show up even when the store has no real deposits yet. Hidden
+          on the transfer_pending tab where the batch view replaces the list. */}
+      {!isLoading &&
+        pendingRequests.length > 0 &&
+        (activeTab === 'all' || activeTab === 'pending_confirm') && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-amber-900 dark:text-amber-200">
+                คำขอฝากเหล้าผ่าน Line ({pendingRequests.length})
+              </h2>
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                รอ Staff อนุมัติ
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {pendingRequests.map((req) => (
+                <Card
+                  key={req.id}
+                  padding="none"
+                  className="border-amber-300 dark:border-amber-800/60"
+                >
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate font-semibold text-gray-900 dark:text-white">
+                          {req.customer_name || 'ลูกค้า'}
+                        </h3>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          {req.table_number && (
+                            <span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800/50">
+                              โต๊ะ {req.table_number}
+                            </span>
+                          )}
+                          {req.customer_phone && <span>{req.customer_phone}</span>}
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatThaiDate(req.created_at)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {req.customer_photo_url && (
+                      <button
+                        type="button"
+                        onClick={() => setViewingPhoto(req.customer_photo_url!)}
+                        className="mt-3 block w-full overflow-hidden rounded-lg"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={req.customer_photo_url}
+                          alt="รูปจากลูกค้า"
+                          className="h-32 w-full object-cover"
+                        />
+                      </button>
+                    )}
+
+                    {req.notes && (
+                      <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                        {req.notes}
+                      </p>
+                    )}
+
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        className="flex-1"
+                        icon={<Plus className="h-4 w-4" />}
+                        onClick={() => {
+                          setApprovingRequest(req);
+                          setShowNewForm(true);
+                        }}
+                      >
+                        อนุมัติเข้าระบบ
+                      </Button>
+                      <Button
+                        variant="danger"
+                        className="flex-1"
+                        icon={<XCircle className="h-4 w-4" />}
+                        onClick={() => setRejectingRequest(req)}
+                      >
+                        ปฏิเสธ
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
       {/* Deposits Table / List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
         </div>
       ) : filteredDeposits.length === 0 ? (
-        <EmptyState
-          icon={Wine}
-          title={t('noDeposits')}
-          description={searchQuery ? t('noSearchResults') : t('noDepositsYet')}
-          action={
-            !searchQuery ? (
-              <Button icon={<Plus className="h-4 w-4" />} onClick={() => setShowNewForm(true)}>
-                {t('newDeposit')}
-              </Button>
-            ) : undefined
-          }
-        />
+        // Show the EmptyState only when both real deposits AND pending requests
+        // are empty — otherwise the "no deposits" message would overshadow the
+        // request cards we just rendered above.
+        pendingRequests.length === 0 ||
+        (activeTab !== 'all' && activeTab !== 'pending_confirm') ? (
+          <EmptyState
+            icon={Wine}
+            title={t('noDeposits')}
+            description={searchQuery ? t('noSearchResults') : t('noDepositsYet')}
+            action={
+              !searchQuery ? (
+                <Button icon={<Plus className="h-4 w-4" />} onClick={() => setShowNewForm(true)}>
+                  {t('newDeposit')}
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : null
       ) : (
         <>
           {/* Batch action bar for expired tab */}
@@ -1086,102 +1183,6 @@ export default function DepositPage() {
               )}
             </>
           )}
-
-          {/* Pending customer LIFF requests — render inline above the deposit
-              list. Show on the "all" and "pending_confirm" tabs since these
-              are conceptually deposits awaiting staff approval. */}
-          {pendingRequests.length > 0 &&
-            (activeTab === 'all' || activeTab === 'pending_confirm') && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base font-semibold text-amber-900 dark:text-amber-200">
-                    คำขอฝากเหล้าผ่าน Line ({pendingRequests.length})
-                  </h2>
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                    รอ Staff อนุมัติ
-                  </span>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {pendingRequests.map((req) => (
-                    <Card
-                      key={req.id}
-                      padding="none"
-                      className="border-amber-300 dark:border-amber-800/60"
-                    >
-                      <div className="p-4">
-                        {/* Header: customer + time */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <h3 className="truncate font-semibold text-gray-900 dark:text-white">
-                              {req.customer_name || 'ลูกค้า'}
-                            </h3>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                              {req.table_number && (
-                                <span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800/50">
-                                  โต๊ะ {req.table_number}
-                                </span>
-                              )}
-                              {req.customer_phone && (
-                                <span>{req.customer_phone}</span>
-                              )}
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {formatThaiDate(req.created_at)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Customer photo */}
-                        {req.customer_photo_url && (
-                          <button
-                            type="button"
-                            onClick={() => setViewingPhoto(req.customer_photo_url!)}
-                            className="mt-3 block w-full overflow-hidden rounded-lg"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={req.customer_photo_url}
-                              alt="รูปจากลูกค้า"
-                              className="h-32 w-full object-cover"
-                            />
-                          </button>
-                        )}
-
-                        {/* Notes */}
-                        {req.notes && (
-                          <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
-                            {req.notes}
-                          </p>
-                        )}
-
-                        {/* Actions */}
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                          <Button
-                            className="flex-1"
-                            icon={<Plus className="h-4 w-4" />}
-                            onClick={() => {
-                              setApprovingRequest(req);
-                              setShowNewForm(true);
-                            }}
-                          >
-                            อนุมัติเข้าระบบ
-                          </Button>
-                          <Button
-                            variant="danger"
-                            className="flex-1"
-                            icon={<XCircle className="h-4 w-4" />}
-                            onClick={() => setRejectingRequest(req)}
-                          >
-                            ปฏิเสธ
-                          </Button>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
 
           {/* Desktop Table */}
           {activeTab !== 'transfer_pending' && <div className="hidden md:block">
