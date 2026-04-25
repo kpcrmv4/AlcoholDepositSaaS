@@ -169,6 +169,10 @@ export default function DepositPage() {
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [approvingRequest, setApprovingRequest] = useState<PendingRequest | null>(null);
   const [rejectingRequest, setRejectingRequest] = useState<PendingRequest | null>(null);
+  // Whether this tenant has any HQ/central branch. When false, the system
+  // can't transfer expired stock to a central warehouse — the "รอนำส่ง HQ"
+  // tab/badge is relabelled "รอจำหน่ายออก" so the workflow reads naturally.
+  const [hasHqBranch, setHasHqBranch] = useState(true);
   const [isRejecting, setIsRejecting] = useState(false);
 
   // Batch selection for expired tab
@@ -379,9 +383,11 @@ export default function DepositPage() {
     setIsLoading(true);
     const supabase = createClient();
 
-    // Load active deposits (no limit — these are the important ones)
-    // and pending deposit_requests in parallel.
-    const [{ data, error }, { data: requestData }] = await Promise.all([
+    // Load active deposits (no limit — these are the important ones),
+    // pending deposit_requests, and the tenant's HQ-branch status in
+    // parallel. RLS scopes the stores query to the current tenant so the
+    // HEAD count reflects whether THIS tenant has an HQ.
+    const [{ data, error }, { data: requestData }, { count: hqCount }] = await Promise.all([
       supabase
         .from('deposits')
         .select('*')
@@ -394,7 +400,14 @@ export default function DepositPage() {
         .eq('store_id', currentStoreId)
         .eq('status', 'pending')
         .order('created_at', { ascending: false }),
+      supabase
+        .from('stores')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_central', true)
+        .eq('active', true),
     ]);
+
+    setHasHqBranch((hqCount ?? 0) > 0);
 
     if (error) {
       toast({ type: 'error', title: t('loadError'), message: t('loadDepositError') });
@@ -782,7 +795,19 @@ export default function DepositPage() {
     return result;
   }, [deposits, activeTab, searchQuery, dateFilterEnabled, dateFrom, dateTo]);
 
-  const depositTabs = DEPOSIT_TAB_IDS.map((id) => ({ id, label: t(DEPOSIT_TAB_KEYS[id]) }));
+  // Label override: when the tenant has no HQ branch, "รอนำส่ง HQ" doesn't
+  // describe what staff actually do with these rows — they're disposed of
+  // locally — so we relabel to "รอจำหน่ายออก" everywhere this status surfaces.
+  const transferPendingLabel = hasHqBranch ? t(DEPOSIT_TAB_KEYS.transfer_pending) : 'รอจำหน่ายออก';
+  const statusLabel = (status: string) => {
+    if (status === 'transfer_pending') return transferPendingLabel;
+    return DEPOSIT_STATUS_LABELS[status] || status;
+  };
+
+  const depositTabs = DEPOSIT_TAB_IDS.map((id) => ({
+    id,
+    label: id === 'transfer_pending' ? transferPendingLabel : t(DEPOSIT_TAB_KEYS[id]),
+  }));
   const tabsWithCounts = depositTabs.map((tab) => {
     if (tab.id === 'request') return { ...tab, count: stats.pendingRequestsCount };
     if (tab.id === 'in_store') return { ...tab, count: stats.activeCount };
@@ -1046,7 +1071,7 @@ export default function DepositPage() {
                             <span className="font-mono text-sm font-semibold text-amber-600 dark:text-amber-400">
                               {batch.transfer_code}
                             </span>
-                            <Badge variant="warning" size="sm">{t('transfer.waitingHQ')}</Badge>
+                            <Badge variant="warning" size="sm">{transferPendingLabel}</Badge>
                             <Badge variant="default" size="sm">{t('transfer.itemsCount', { count: batch.items.length })}</Badge>
                           </div>
 
@@ -1256,7 +1281,7 @@ export default function DepositPage() {
                           <td className="whitespace-nowrap px-5 py-4">
                             <div className="flex items-center gap-1.5">
                               <Badge variant={statusVariantMap[deposit.status] || 'default'}>
-                                {DEPOSIT_STATUS_LABELS[deposit.status] || deposit.status}
+                                {statusLabel(deposit.status)}
                               </Badge>
                               {deposit.is_vip && (
                                 <Badge variant="warning" size="sm">
@@ -1481,7 +1506,7 @@ export default function DepositPage() {
                             {deposit.deposit_code}
                           </span>
                           <Badge variant={statusVariantMap[deposit.status] || 'default'} size="sm">
-                            {DEPOSIT_STATUS_LABELS[deposit.status] || deposit.status}
+                            {statusLabel(deposit.status)}
                           </Badge>
                           {deposit.is_vip && (
                             <Badge variant="warning" size="sm">

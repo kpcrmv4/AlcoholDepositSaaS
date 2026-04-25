@@ -172,6 +172,25 @@ export function DepositDetail({ deposit: initialDeposit, onBack, storeName = '' 
   const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
   const [isPrintingLabel, setIsPrintingLabel] = useState(false);
 
+  // When the tenant has no HQ branch, the "รอนำส่ง HQ" label is misleading
+  // — the deposit will be disposed of locally rather than transferred. Track
+  // the tenant's HQ presence so we can relabel the status to "รอจำหน่ายออก".
+  const [hasHqBranch, setHasHqBranch] = useState(true);
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from('stores')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_central', true)
+      .eq('active', true)
+      .then(({ count }) => setHasHqBranch((count ?? 0) > 0));
+  }, []);
+  const transferPendingLabel = hasHqBranch ? 'รอนำส่ง HQ' : 'รอจำหน่ายออก';
+  const renderStatusLabel = (status: string) =>
+    status === 'transfer_pending'
+      ? transferPendingLabel
+      : DEPOSIT_STATUS_LABELS[status] || status;
+
   // Print preview modal
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [printPreviewType, setPrintPreviewType] = useState<'receipt' | 'label'>('receipt');
@@ -854,7 +873,7 @@ export function DepositDetail({ deposit: initialDeposit, onBack, storeName = '' 
                   {deposit.deposit_code}
                 </h1>
                 <Badge variant={statusVariantMap[deposit.status] || 'default'}>
-                  {DEPOSIT_STATUS_LABELS[deposit.status] || deposit.status}
+                  {renderStatusLabel(deposit.status)}
                 </Badge>
                 {deposit.is_vip && (
                   <Badge variant="warning">
@@ -1183,7 +1202,9 @@ export function DepositDetail({ deposit: initialDeposit, onBack, storeName = '' 
                                 : 'text-gray-400 dark:text-gray-500'
                           )}
                         >
-                          {t(step.labelKey)}
+                          {step.key === 'transfer_pending' && !hasHqBranch
+                            ? transferPendingLabel
+                            : t(step.labelKey)}
                         </p>
                         {isCurrent && (
                           <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
@@ -1268,7 +1289,9 @@ export function DepositDetail({ deposit: initialDeposit, onBack, storeName = '' 
                                   : 'text-gray-400 dark:text-gray-500'
                               )}
                             >
-                              {t(step.labelKey)}
+                              {step.key === 'transfer_pending' && !hasHqBranch
+                                ? transferPendingLabel
+                                : t(step.labelKey)}
                             </p>
                             {isCurrent && (
                               <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
