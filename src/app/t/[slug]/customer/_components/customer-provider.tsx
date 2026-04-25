@@ -10,6 +10,11 @@ import {
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTenantMaybe } from '@/lib/tenant';
+import {
+  DEFAULT_CUSTOMER_THEME,
+  isCustomerTheme,
+  type CustomerThemeKey,
+} from '@/lib/customer-themes';
 
 interface StoreContext {
   /** store_code passed via ?store=XX (from the staff-shared LIFF URL) */
@@ -18,6 +23,8 @@ interface StoreContext {
   name: string | null;
   /** store id resolved from DB */
   id: string | null;
+  /** Customer LIFF theme picked by branch settings (defaults to 'amber') */
+  customerTheme: CustomerThemeKey;
 }
 
 interface CustomerAuth {
@@ -32,7 +39,12 @@ interface CustomerAuth {
   store: StoreContext;
 }
 
-const DEFAULT_STORE: StoreContext = { code: null, name: null, id: null };
+const DEFAULT_STORE: StoreContext = {
+  code: null,
+  name: null,
+  id: null,
+  customerTheme: DEFAULT_CUSTOMER_THEME,
+};
 
 const CustomerContext = createContext<CustomerAuth>({
   lineUserId: null,
@@ -61,7 +73,7 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
     mode: null,
     isLoading: true,
     error: null,
-    store: { code: storeCode, name: null, id: null },
+    store: { code: storeCode, name: null, id: null, customerTheme: DEFAULT_CUSTOMER_THEME },
   });
 
   useEffect(() => {
@@ -78,11 +90,19 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
       const res = await fetch(
         `/api/public/store-lookup?code=${encodeURIComponent(code)}`,
       );
-      if (!res.ok) return { code, name: null, id: null };
+      if (!res.ok) return { code, name: null, id: null, customerTheme: DEFAULT_CUSTOMER_THEME };
       const data = await res.json();
-      return { code, name: data.name || null, id: data.id || null };
+      const theme = isCustomerTheme(data.customerTheme)
+        ? data.customerTheme
+        : DEFAULT_CUSTOMER_THEME;
+      return {
+        code,
+        name: data.name || null,
+        id: data.id || null,
+        customerTheme: theme,
+      };
     } catch {
-      return { code, name: null, id: null };
+      return { code, name: null, id: null, customerTheme: DEFAULT_CUSTOMER_THEME };
     }
   }
 

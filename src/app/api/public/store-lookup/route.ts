@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('stores')
-    .select('id, store_code, store_name, active')
+    .select('id, store_code, store_name, active, customer_theme')
     .eq('store_code', code)
     .maybeSingle();
 
@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
       id: data.id,
       code: data.store_code,
       name: data.store_name,
+      customerTheme: data.customer_theme || 'amber',
     },
     {
       headers: {
