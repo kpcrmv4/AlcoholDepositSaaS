@@ -190,7 +190,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Send web push + in-app notifications to staff/bar
+  // Send web push + in-app notifications to staff/bar/manager/owner.
+  // Default roles in notifyStoreStaff exclude 'owner', which leaves
+  // single-owner stores with no in-app alert at all — pass roles
+  // explicitly to mirror the deposit-request flow.
   try {
     await notifyStoreStaff({
       storeId: deposit.store_id,
@@ -198,6 +201,7 @@ export async function POST(request: NextRequest) {
       title: 'มีคำขอเบิกเหล้า',
       body: `${customerName || deposit.customer_name} ขอเบิก ${deposit.product_name}`,
       data: { depositId: deposit.id, productName: deposit.product_name },
+      roles: ['owner', 'manager', 'staff', 'bar'],
     });
   } catch (err) {
     console.error('[Withdrawal] Failed to send push notification:', err);

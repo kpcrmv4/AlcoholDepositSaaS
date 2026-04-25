@@ -75,7 +75,7 @@ export interface ChatPinnedMessage {
 }
 
 export interface ActionCardMetadata {
-  action_type: 'deposit_claim' | 'withdrawal_claim' | 'stock_explain' | 'borrow_approve' | 'transfer_receive' | 'generic';
+  action_type: 'deposit_claim' | 'deposit_request' | 'withdrawal_claim' | 'stock_explain' | 'borrow_approve' | 'transfer_receive' | 'generic';
   reference_id: string;
   reference_table: string;
   status: ActionCardStatus;

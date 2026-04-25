@@ -32,7 +32,7 @@ import {
 import { cn } from '@/lib/utils/cn';
 import { logAudit, AUDIT_ACTIONS } from '@/lib/audit';
 import { notifyStaff } from '@/lib/notifications/client';
-import { notifyChatNewDepositForBar } from '@/lib/chat/bot-client';
+import { notifyChatNewDepositForBar, syncChatActionCardStatus } from '@/lib/chat/bot-client';
 import { expiryDateISO } from '@/lib/utils/date';
 import { formatThaiDate } from '@/lib/utils/format';
 import { useTranslations } from 'next-intl';
@@ -653,6 +653,17 @@ export function DepositForm({ onBack, onSuccess, initialValues }: DepositFormPro
         }).catch((err) =>
           console.error('[DepositForm] Failed to notify customer via LINE:', err),
         );
+
+        // Mark the original deposit_request action card in chat as completed
+        // so it disappears from the "รอรับ" filter on the task board.
+        syncChatActionCardStatus({
+          storeId: currentStoreId,
+          referenceId: requestId,
+          actionType: 'deposit_request',
+          newStatus: 'completed',
+          completedBy: user?.id,
+          completedByName: user?.displayName || user?.username || undefined,
+        });
       }
 
       const itemsSummary = items

@@ -164,21 +164,42 @@ export async function POST(request: NextRequest) {
   }
 
   // -----------------------------------------------------------------------
-  // Post a system message to the store's in-app chat room so staff see the
-  // request without having to refresh. We use type='system' (not action_card)
-  // because the request lives in `deposit_requests`, not `deposits` — it has
-  // no deposit_code yet, and staff must approve it on /deposit/requests
-  // before it becomes a real deposit.
+  // Post an action_card to the store's in-app chat room so the request
+  // appears in the "รายการงาน" task board (system messages don't show up
+  // there because the board filters on type='action_card'). The card uses a
+  // dedicated action_type='deposit_request' so the task board groups it
+  // under its own header instead of mixing with 'deposit_claim' cards
+  // (which represent fully-registered deposits awaiting bar confirmation).
   // -----------------------------------------------------------------------
   try {
     await sendBotMessage({
       storeId,
-      type: 'system',
-      content: `📥 คำขอฝากใหม่จาก ${customerName || 'ลูกค้า'}${tableNumber ? ` (โต๊ะ ${tableNumber})` : ''} — รอ Staff อนุมัติที่หน้า "คำขอฝาก"`,
-      metadata: { request_id: insertedId, customer_phone: customerPhone || null },
+      type: 'action_card',
+      content: `📥 คำขอฝากใหม่จาก ${customerName || 'ลูกค้า'}${tableNumber ? ` (โต๊ะ ${tableNumber})` : ''}`,
+      metadata: {
+        action_type: 'deposit_request',
+        reference_id: insertedId,
+        reference_table: 'deposit_requests',
+        status: 'pending',
+        claimed_by: null,
+        claimed_by_name: null,
+        claimed_at: null,
+        completed_at: null,
+        timeout_minutes: 60,
+        priority: 'normal',
+        summary: {
+          customer: customerName || 'ลูกค้า',
+          items: 'รอ Staff ระบุรายการ',
+          note: tableNumber
+            ? `โต๊ะ ${tableNumber}`
+            : (notes || customerPhone || undefined),
+          customer_phone: customerPhone || undefined,
+          customer_photo_url: customerPhotoUrl || undefined,
+        },
+      },
     });
   } catch (err) {
-    console.error('[DepositRequest] Failed to post chat system message:', err);
+    console.error('[DepositRequest] Failed to post chat action card:', err);
   }
 
   return NextResponse.json({ success: true, requestId: insertedId });

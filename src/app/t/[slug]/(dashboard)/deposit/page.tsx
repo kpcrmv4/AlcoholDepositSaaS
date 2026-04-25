@@ -50,6 +50,7 @@ import { useTranslations } from 'next-intl';
 import { DepositForm } from './_components/deposit-form';
 import { DepositDetail } from './_components/deposit-detail';
 import { notifyChatTransferBatch, notifyChatTransferSubmitted } from '@/lib/chat/transfer-bot-client';
+import { syncChatActionCardStatus } from '@/lib/chat/bot-client';
 import { logAudit, AUDIT_ACTIONS } from '@/lib/audit';
 import { generateTransferCode } from '@/lib/utils/transfer-code';
 import type { TransferCardItem } from '@/types/transfer-chat';
@@ -446,6 +447,17 @@ export default function DepositPage() {
         console.error('[DepositPage] Failed to notify customer of rejection:', err),
       );
     }
+
+    // Sync the chat action card so the rejected request leaves the
+    // "รอรับ" filter and shows as closed in รายการงาน.
+    syncChatActionCardStatus({
+      storeId: currentStoreId,
+      referenceId: rejectingRequest.id,
+      actionType: 'deposit_request',
+      newStatus: 'rejected',
+      completedBy: user.id,
+      completedByName: user.displayName || user.username || undefined,
+    });
 
     toast({ type: 'success', title: 'ปฏิเสธคำขอแล้ว' });
     setRejectingRequest(null);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, memo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTenantRouter } from '@/lib/tenant/use-tenant-router';
 import { createClient } from '@/lib/supabase/client';
 import { broadcastToChannel } from '@/lib/supabase/broadcast';
 import { useChatStore } from '@/stores/chat-store';
@@ -46,6 +47,7 @@ interface ActionCardMessageProps {
 }
 
 const ACTION_TYPE_CONFIG: Record<string, { icon: typeof Wine; color: string; label: string }> = {
+  deposit_request: { icon: Wine, color: 'amber', label: 'คำขอฝากเหล้า' },
   deposit_claim: { icon: Wine, color: 'emerald', label: 'ฝากเหล้า' },
   withdrawal_claim: { icon: Package, color: 'blue', label: 'คำขอเบิกเหล้า' },
   stock_explain: { icon: ClipboardCheck, color: 'amber', label: 'สต๊อกไม่ตรง' },
@@ -69,6 +71,7 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
   const [isExpanded, setIsExpanded] = useState(false);
   const { updateMessage } = useChatStore();
   const router = useRouter();
+  const tenantRouter = useTenantRouter();
   const meta = message.metadata as ActionCardMetadata | null;
 
   if (!meta) return null;
@@ -99,6 +102,10 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
   // Deposit 2-step flow: staff can't claim pending_bar, only bar/manager/owner
   const isDepositCard = meta.action_type === 'deposit_claim';
   const isWithdrawalCard = meta.action_type === 'withdrawal_claim';
+  // Customer LIFF deposit_request — no inline claim/complete from chat,
+  // staff must approve via the /deposit page where they can fill in the
+  // product, qty and received photo. The card shows info + nav button only.
+  const isDepositRequest = meta.action_type === 'deposit_request';
   const canClaimBarStep = isPendingBar && isDepositCard
     && currentUserRole && ['bar', 'manager', 'owner'].includes(currentUserRole);
   // Withdrawal action cards: only bar/manager/owner can approve
@@ -762,9 +769,45 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
         )}
 
         {/* ==========================================
-            BORROW-SPECIFIC UI
+            DEPOSIT_REQUEST (customer LIFF) UI — info only
+            Approve/reject happens on /deposit page, not from chat.
             ========================================== */}
-        {isBorrow ? (
+        {isDepositRequest ? (
+          <>
+            {typeof meta.summary.customer_photo_url === 'string' && meta.summary.customer_photo_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={meta.summary.customer_photo_url}
+                alt="รูปจากลูกค้า"
+                className="mb-2 h-32 w-full rounded-lg object-cover"
+              />
+            )}
+            {isPending ? (
+              <Button
+                size="sm"
+                variant="primary"
+                className="w-full bg-amber-600 hover:bg-amber-700"
+                onClick={() => tenantRouter.push('/deposit')}
+              >
+                ไปหน้าอนุมัติคำขอฝาก
+              </Button>
+            ) : isCompleted ? (
+              <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 dark:bg-emerald-900/20">
+                <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                  อนุมัติเข้าระบบแล้ว
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 dark:bg-gray-700/50">
+                <Ban className="h-4 w-4 text-gray-500" />
+                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                  ปิดรายการแล้ว
+                </span>
+              </div>
+            )}
+          </>
+        ) : isBorrow ? (
           <>
             {/* Pending — แสดงปุ่มอนุมัติ/ปฏิเสธ */}
             {borrowStatus === 'pending_approval' && isPending && !showBorrowRejectForm && (

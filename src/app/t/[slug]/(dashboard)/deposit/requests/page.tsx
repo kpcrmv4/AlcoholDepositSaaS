@@ -33,7 +33,7 @@ import { TenantLink as Link } from '@/lib/tenant/link';
 import { useTranslations } from 'next-intl';
 import { logAudit, AUDIT_ACTIONS } from '@/lib/audit';
 import { notifyStaff } from '@/lib/notifications/client';
-import { notifyChatNewDeposit } from '@/lib/chat/bot-client';
+import { notifyChatNewDeposit, syncChatActionCardStatus } from '@/lib/chat/bot-client';
 import { expiryDateISO } from '@/lib/utils/date';
 
 interface DepositRequest {
@@ -228,6 +228,16 @@ export default function DepositRequestsPage() {
             console.error('[DepositRequests] notify-customer (approved) failed:', err),
           );
         }
+
+        // Mark the chat action card as completed so it leaves "รอรับ".
+        syncChatActionCardStatus({
+          storeId: currentStoreId,
+          referenceId: selectedRequest.id,
+          actionType: 'deposit_request',
+          newStatus: 'completed',
+          completedBy: user?.id,
+          completedByName: user?.username || undefined,
+        });
       }
     } else {
       // Reject
@@ -263,6 +273,16 @@ export default function DepositRequestsPage() {
             console.error('[DepositRequests] notify-customer (rejected) failed:', err),
           );
         }
+
+        // Sync chat action card.
+        syncChatActionCardStatus({
+          storeId: currentStoreId,
+          referenceId: selectedRequest.id,
+          actionType: 'deposit_request',
+          newStatus: 'rejected',
+          completedBy: user?.id,
+          completedByName: user?.username || undefined,
+        });
       }
     }
 

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { useChatStore } from '@/stores/chat-store';
+import { useEnabledModules } from '@/lib/tenant/enabled-modules';
 import { ActionCardMessage } from './action-card-message';
 import type { ChatMessage } from '@/types/chat';
 
@@ -47,14 +48,27 @@ function getNormalizedStatus(meta: Record<string, unknown>): 'pending' | 'pendin
   if (status === 'rejected' || status === 'expired' || status === 'cancelled' || status === 'partial') return 'other';
   return 'other';
 }
-type FilterType = 'all' | 'deposit_claim' | 'withdrawal_claim' | 'stock_explain' | 'borrow_approve' | 'transfer_receive';
+type FilterType = 'all' | 'deposit_request' | 'deposit_claim' | 'withdrawal_claim' | 'stock_explain' | 'borrow_approve' | 'transfer_receive';
 
 const TYPE_CONFIG: Record<string, { icon: typeof Wine; color: string; label: string; bgClass: string }> = {
+  deposit_request: { icon: Wine, color: 'amber', label: 'คำขอฝาก', bgClass: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' },
   deposit_claim: { icon: Wine, color: 'emerald', label: 'ฝากเหล้า', bgClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' },
   withdrawal_claim: { icon: Package, color: 'blue', label: 'เบิกเหล้า', bgClass: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' },
   stock_explain: { icon: ClipboardCheck, color: 'amber', label: 'สต๊อก', bgClass: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' },
   borrow_approve: { icon: Repeat, color: 'violet', label: 'ยืมสินค้า', bgClass: 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400' },
   transfer_receive: { icon: Truck, color: 'orange', label: 'โอนสต๊อก', bgClass: 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400' },
+};
+
+// Map each action_type to the tenant module that gates it. When a module is
+// disabled in tenant_modules the corresponding chip is hidden and any
+// existing cards of that type are filtered out of the board.
+const ACTION_TYPE_TO_MODULE: Record<string, string> = {
+  deposit_request: 'deposit',
+  deposit_claim: 'deposit',
+  withdrawal_claim: 'deposit',
+  stock_explain: 'stock',
+  borrow_approve: 'borrow',
+  transfer_receive: 'transfer',
 };
 
 const STATUS_CONFIG: Record<string, { icon: typeof Clock; label: string; color: string }> = {
@@ -66,20 +80,39 @@ const STATUS_CONFIG: Record<string, { icon: typeof Clock; label: string; color: 
 
 export function TransactionBoard({ roomId, storeId, currentUserId, currentUserName, currentUserRole }: TransactionBoardProps) {
   const messages = useChatStore((s) => s.messages);
+  const enabledModules = useEnabledModules();
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [groupStatusFilter, setGroupStatusFilter] = useState<Record<string, string>>({}); // type → status filter
   const collapsedInitRef = useRef(false);
 
+  // Only show chips/cards for action_types whose underlying tenant module is
+  // enabled. When enabledModules is null (e.g. customer area, platform admin)
+  // we don't filter — the existing behaviour is preserved.
+  const visibleTypeKeys = useMemo(() => {
+    return Object.keys(TYPE_CONFIG).filter((key) => {
+      if (!enabledModules) return true;
+      const moduleKey = ACTION_TYPE_TO_MODULE[key];
+      if (!moduleKey) return true; // unmapped → always visible
+      return enabledModules.has(moduleKey);
+    });
+  }, [enabledModules]);
+  const visibleTypeSet = useMemo(() => new Set(visibleTypeKeys), [visibleTypeKeys]);
+
   // Extract action card messages only (works for both ActionCard and Transfer metadata)
   const actionCards = useMemo(() => {
     return messages.filter((msg) => {
       if (msg.type !== 'action_card' || !msg.metadata) return false;
       const meta = msg.metadata as unknown as Record<string, unknown>;
-      return !!meta.action_type;
+      const at = meta.action_type as string | undefined;
+      if (!at) return false;
+      // Hide cards belonging to a disabled module so they don't leak into
+      // the "ทั้งหมด" view either.
+      if (!visibleTypeSet.has(at)) return false;
+      return true;
     });
-  }, [messages]);
+  }, [messages, visibleTypeSet]);
 
   // Apply filters (using normalized status for cross-type compatibility)
   const filteredCards = useMemo(() => {
@@ -167,18 +200,23 @@ export function TransactionBoard({ roomId, storeId, currentUserId, currentUserNa
         <StatBadge icon={CheckCircle} label="เสร็จ" count={stats.completed} color="emerald" active={filterStatus === 'completed'} onClick={() => setFilterStatus(filterStatus === 'completed' ? 'all' : 'completed')} />
       </div>
 
-      {/* Type filter chips */}
+      {/* Type filter chips — limited to action_types whose module is enabled
+          for this tenant so the board reflects only what the store actually
+          uses. */}
       <div className="flex items-center gap-1.5 overflow-x-auto px-3 py-2">
         <FilterChip label="ทั้งหมด" active={filterType === 'all'} onClick={() => setFilterType('all')} />
-        {Object.entries(TYPE_CONFIG).map(([key, cfg]) => (
-          <FilterChip
-            key={key}
-            label={cfg.label}
-            icon={cfg.icon}
-            active={filterType === key}
-            onClick={() => setFilterType(filterType === key ? 'all' : key as FilterType)}
-          />
-        ))}
+        {visibleTypeKeys.map((key) => {
+          const cfg = TYPE_CONFIG[key];
+          return (
+            <FilterChip
+              key={key}
+              label={cfg.label}
+              icon={cfg.icon}
+              active={filterType === key}
+              onClick={() => setFilterType(filterType === key ? 'all' : key as FilterType)}
+            />
+          );
+        })}
       </div>
 
       {/* Grouped action cards */}
