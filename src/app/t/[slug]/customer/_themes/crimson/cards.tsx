@@ -8,15 +8,17 @@
 
 import {
   Wine,
+  Package,
   Clock,
   Hourglass,
   CheckCircle2,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import type { ThemeViewProps, DepositItem } from '../types';
 
 export function CrimsonBottleList({ props }: { props: ThemeViewProps }) {
-  const { filtered, searchQuery, onOpenDetail, t } = props;
+  const { filtered, searchQuery, requestingId, onWithdraw, onOpenDetail, t } = props;
 
   if (filtered.length === 0) {
     return (
@@ -34,7 +36,14 @@ export function CrimsonBottleList({ props }: { props: ThemeViewProps }) {
   return (
     <ul className="space-y-3">
       {filtered.map((d) => (
-        <CrimsonCard key={d.id} d={d} onOpenDetail={onOpenDetail} t={t} />
+        <CrimsonCard
+          key={d.id}
+          d={d}
+          isRequesting={requestingId === d.id}
+          onWithdraw={onWithdraw}
+          onOpenDetail={onOpenDetail}
+          t={t}
+        />
       ))}
     </ul>
   );
@@ -42,16 +51,22 @@ export function CrimsonBottleList({ props }: { props: ThemeViewProps }) {
 
 function CrimsonCard({
   d,
+  isRequesting,
+  onWithdraw,
   onOpenDetail,
   t,
 }: {
   d: DepositItem;
+  isRequesting: boolean;
+  onWithdraw: (d: DepositItem) => void;
   onOpenDetail: (d: DepositItem) => void;
   t: ThemeViewProps['t'];
 }) {
   const days = d.expiryDate ? daysUntil(d.expiryDate) : null;
   const isPending = d.status === 'pending_confirm';
   const isPendingW = d.status === 'pending_withdrawal';
+  const isInStore = d.status === 'in_store';
+  const canWithdraw = isInStore && !isRequesting;
   // ALL pending_confirm rows open the detail modal on tap. Modal then
   // shows a Cancel button only when d.isRequest is true (deposit_request
   // the customer can pull back); real deposits get info + close-only.
@@ -129,9 +144,28 @@ function CrimsonCard({
                 </span>
               </div>
 
-              <p className="crimson-script mt-2 text-[13px] leading-none text-[#7a1a1a]/65">
-                {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
-              </p>
+              {isInStore ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onWithdraw(d);
+                  }}
+                  disabled={!canWithdraw}
+                  className="customer-tap mt-3 flex w-full items-center justify-center gap-2 rounded-md bg-[#7a1a1a] py-2 text-[12px] font-bold text-[#faf3e8] shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRequesting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Package className="h-3.5 w-3.5" />
+                  )}
+                  {isRequesting ? t('requesting') : t('requestWithdrawal')}
+                </button>
+              ) : (
+                <p className="crimson-script mt-2 text-[13px] leading-none text-[#7a1a1a]/65">
+                  {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+                </p>
+              )}
             </>
           ) : (
             <div className="mt-2 flex items-center gap-2">
@@ -150,17 +184,24 @@ function CrimsonCard({
     </>
   );
 
-  // Whole card opens detail modal — modal carries the actions
-  // (withdraw / cancel) appropriate to status.
+  // Whole card → modal. in_store rows include an inline ขอเบิก button
+  // (with stopPropagation). div+role=button keeps HTML valid.
   return (
     <li>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onOpenDetail(d)}
-        className={'customer-tap w-full text-left ' + cardCls}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpenDetail(d);
+          }
+        }}
+        className={'customer-tap customer-focus-ring w-full cursor-pointer text-left ' + cardCls}
       >
         {inner}
-      </button>
+      </div>
     </li>
   );
 }

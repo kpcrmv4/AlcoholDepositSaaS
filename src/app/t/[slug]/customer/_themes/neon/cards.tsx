@@ -7,10 +7,12 @@
 
 import {
   Wine,
+  Package,
   Clock,
   Hourglass,
   CheckCircle2,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import type { ThemeViewProps, DepositItem } from '../types';
 
@@ -22,7 +24,7 @@ const STATUS_GLOW: Record<string, string> = {
 };
 
 export function NeonBottleList({ props }: { props: ThemeViewProps }) {
-  const { filtered, searchQuery, onOpenDetail, t } = props;
+  const { filtered, searchQuery, requestingId, onWithdraw, onOpenDetail, t } = props;
 
   if (filtered.length === 0) {
     return (
@@ -40,7 +42,14 @@ export function NeonBottleList({ props }: { props: ThemeViewProps }) {
   return (
     <ul className="space-y-3">
       {filtered.map((d) => (
-        <NeonCard key={d.id} d={d} onOpenDetail={onOpenDetail} t={t} />
+        <NeonCard
+          key={d.id}
+          d={d}
+          isRequesting={requestingId === d.id}
+          onWithdraw={onWithdraw}
+          onOpenDetail={onOpenDetail}
+          t={t}
+        />
       ))}
     </ul>
   );
@@ -48,16 +57,22 @@ export function NeonBottleList({ props }: { props: ThemeViewProps }) {
 
 function NeonCard({
   d,
+  isRequesting,
+  onWithdraw,
   onOpenDetail,
   t,
 }: {
   d: DepositItem;
+  isRequesting: boolean;
+  onWithdraw: (d: DepositItem) => void;
   onOpenDetail: (d: DepositItem) => void;
   t: ThemeViewProps['t'];
 }) {
   const days = d.expiryDate ? daysUntil(d.expiryDate) : null;
   const isPending = d.status === 'pending_confirm';
   const isPendingW = d.status === 'pending_withdrawal';
+  const isInStore = d.status === 'in_store';
+  const canWithdraw = isInStore && !isRequesting;
   const glow = STATUS_GLOW[d.status] ?? '#a786df';
 
   const expiryTone =
@@ -114,17 +129,26 @@ function NeonCard({
     );
   }
 
-  // Tappable card — opens detail modal.
+  // Tap on body → modal. in_store gets an inline 'ขอเบิก' shortcut button
+  // with stopPropagation; uses div+role=button for the wrapper because
+  // <button> can't legally contain another <button>.
   return (
     <li className="relative">
       <div
         className="pointer-events-none absolute -inset-px rounded-2xl opacity-50 blur-md"
         style={{ background: `radial-gradient(60% 60% at 30% 50%, ${glow}38, transparent 70%)` }}
       />
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onOpenDetail(d)}
-        className="customer-tap relative w-full overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0b1a]/85 p-3.5 text-left backdrop-blur-sm"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpenDetail(d);
+          }
+        }}
+        className="customer-tap customer-focus-ring relative w-full cursor-pointer overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0b1a]/85 p-3.5 text-left backdrop-blur-sm"
       >
         <div className="flex gap-3">
           <NeonBottle glow={glow} percent={d.remainingPercent} />
@@ -166,12 +190,31 @@ function NeonCard({
               </span>
             </div>
 
-            <p className="mt-2 font-mono text-[10.5px] text-violet-200/55">
-              {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
-            </p>
+            {isInStore ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onWithdraw(d);
+                }}
+                disabled={!canWithdraw}
+                className="customer-tap mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-violet-500 px-3 py-2 text-[12px] font-black text-white shadow-[0_0_18px_rgba(232,121,249,0.45)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isRequesting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Package className="h-3.5 w-3.5" />
+                )}
+                {isRequesting ? t('requesting') : t('requestWithdrawal')}
+              </button>
+            ) : (
+              <p className="mt-2 font-mono text-[10.5px] text-violet-200/55">
+                {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+              </p>
+            )}
           </div>
         </div>
-      </button>
+      </div>
     </li>
   );
 }

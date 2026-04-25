@@ -10,15 +10,17 @@
 
 import {
   Wine,
+  Package,
   Clock,
   Hourglass,
   CheckCircle2,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import type { ThemeViewProps, DepositItem } from '../types';
 
 export function AmberBottleList({ props }: { props: ThemeViewProps }) {
-  const { filtered, searchQuery, onOpenDetail, t } = props;
+  const { filtered, searchQuery, requestingId, onWithdraw, onOpenDetail, t } = props;
 
   if (filtered.length === 0) {
     return (
@@ -36,7 +38,14 @@ export function AmberBottleList({ props }: { props: ThemeViewProps }) {
   return (
     <ul className="space-y-2.5">
       {filtered.map((d) => (
-        <AmberCard key={d.id} d={d} onOpenDetail={onOpenDetail} t={t} />
+        <AmberCard
+          key={d.id}
+          d={d}
+          isRequesting={requestingId === d.id}
+          onWithdraw={onWithdraw}
+          onOpenDetail={onOpenDetail}
+          t={t}
+        />
       ))}
     </ul>
   );
@@ -44,16 +53,21 @@ export function AmberBottleList({ props }: { props: ThemeViewProps }) {
 
 function AmberCard({
   d,
+  isRequesting,
+  onWithdraw,
   onOpenDetail,
   t,
 }: {
   d: DepositItem;
+  isRequesting: boolean;
+  onWithdraw: (d: DepositItem) => void;
   onOpenDetail: (d: DepositItem) => void;
   t: ThemeViewProps['t'];
 }) {
   const days = d.expiryDate ? daysUntil(d.expiryDate) : null;
   const isPending = d.status === 'pending_confirm';
   const isPendingW = d.status === 'pending_withdrawal';
+  const isInStore = d.status === 'in_store';
 
   const expiryTone =
     days === null
@@ -106,14 +120,25 @@ function AmberCard({
     );
   }
 
-  // Tappable card — opens detail modal. Withdraw / cancel actions live
-  // inside the modal, not on the card.
+  // Tap on card body → modal. For in_store rows we ALSO render an inline
+  // 'ขอเบิก' button as a fast path; clicking it stops propagation so it
+  // doesn't trigger the modal open. Wrapper is a div+role=button (not a
+  // <button>) because nesting <button> inside <button> is invalid HTML.
+  const canWithdraw = isInStore && !isRequesting;
+
   return (
     <li>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onOpenDetail(d)}
-        className="customer-tap w-full overflow-hidden rounded-2xl border border-amber-200/10 bg-gradient-to-b from-[#1c150f] to-[#13100c] p-3.5 text-left shadow-lg shadow-black/30 transition hover:border-amber-200/25"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpenDetail(d);
+          }
+        }}
+        className="customer-tap customer-focus-ring w-full cursor-pointer overflow-hidden rounded-2xl border border-amber-200/10 bg-gradient-to-b from-[#1c150f] to-[#13100c] p-3.5 text-left shadow-lg shadow-black/30 transition hover:border-amber-200/25"
       >
         <div className="flex gap-3">
           <AmberBottleSvg hue="#a06b32" percent={d.remainingPercent} />
@@ -155,12 +180,31 @@ function AmberCard({
               </span>
             </div>
 
-            <p className="mt-2 text-[10.5px] font-medium text-amber-200/55">
-              {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
-            </p>
+            {isInStore ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onWithdraw(d);
+                }}
+                disabled={!canWithdraw}
+                className="customer-tap mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 px-3 py-2 text-[12px] font-bold text-[#1a1108] shadow-sm shadow-amber-500/20 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isRequesting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Package className="h-3.5 w-3.5" />
+                )}
+                {isRequesting ? t('requesting') : t('requestWithdrawal')}
+              </button>
+            ) : (
+              <p className="mt-2 text-[10.5px] font-medium text-amber-200/55">
+                {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+              </p>
+            )}
           </div>
         </div>
-      </button>
+      </div>
     </li>
   );
 }

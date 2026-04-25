@@ -8,10 +8,12 @@
 
 import {
   Wine,
+  Package,
   Clock,
   Hourglass,
   CheckCircle2,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import type { ThemeViewProps, DepositItem } from '../types';
 
@@ -23,7 +25,7 @@ const STATUS_LIQUID: Record<string, string> = {
 };
 
 export function SunsetBottleList({ props }: { props: ThemeViewProps }) {
-  const { filtered, searchQuery, onOpenDetail, t } = props;
+  const { filtered, searchQuery, requestingId, onWithdraw, onOpenDetail, t } = props;
 
   if (filtered.length === 0) {
     return (
@@ -41,7 +43,14 @@ export function SunsetBottleList({ props }: { props: ThemeViewProps }) {
   return (
     <ul className="space-y-3">
       {filtered.map((d) => (
-        <SunsetCard key={d.id} d={d} onOpenDetail={onOpenDetail} t={t} />
+        <SunsetCard
+          key={d.id}
+          d={d}
+          isRequesting={requestingId === d.id}
+          onWithdraw={onWithdraw}
+          onOpenDetail={onOpenDetail}
+          t={t}
+        />
       ))}
     </ul>
   );
@@ -49,16 +58,22 @@ export function SunsetBottleList({ props }: { props: ThemeViewProps }) {
 
 function SunsetCard({
   d,
+  isRequesting,
+  onWithdraw,
   onOpenDetail,
   t,
 }: {
   d: DepositItem;
+  isRequesting: boolean;
+  onWithdraw: (d: DepositItem) => void;
   onOpenDetail: (d: DepositItem) => void;
   t: ThemeViewProps['t'];
 }) {
   const days = d.expiryDate ? daysUntil(d.expiryDate) : null;
   const isPending = d.status === 'pending_confirm';
   const isPendingW = d.status === 'pending_withdrawal';
+  const isInStore = d.status === 'in_store';
+  const canWithdraw = isInStore && !isRequesting;
   const liquid = STATUS_LIQUID[d.status] ?? '#ea580c';
 
   const expiryTone =
@@ -123,9 +138,28 @@ function SunsetCard({
                 </span>
               </div>
 
-              <p className="mt-2 text-[10.5px] font-semibold text-orange-900/55">
-                {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
-              </p>
+              {isInStore ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onWithdraw(d);
+                  }}
+                  disabled={!canWithdraw}
+                  className="customer-tap mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 px-3 py-2 text-[12px] font-black text-white shadow-md shadow-orange-400/40 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRequesting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Package className="h-3.5 w-3.5" />
+                  )}
+                  {isRequesting ? t('requesting') : t('requestWithdrawal')}
+                </button>
+              ) : (
+                <p className="mt-2 text-[10.5px] font-semibold text-orange-900/55">
+                  {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+                </p>
+              )}
             </>
           ) : (
             <div className="mt-2 flex items-center gap-2">
@@ -144,17 +178,25 @@ function SunsetCard({
     </>
   );
 
-  // Whole card is the tap target — opens the detail modal regardless of
-  // status. Withdraw / cancel actions live inside the modal.
+  // Whole card is the tap target → opens the detail modal. in_store rows
+  // also include an inline 'ขอเบิก' button (with stopPropagation) as a
+  // fast path; div+role=button avoids invalid nested buttons.
   return (
     <li>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onOpenDetail(d)}
-        className={'customer-tap w-full text-left ' + wrapperCls}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpenDetail(d);
+          }
+        }}
+        className={'customer-tap customer-focus-ring w-full cursor-pointer text-left ' + wrapperCls}
       >
         {bodyContent}
-      </button>
+      </div>
     </li>
   );
 }
