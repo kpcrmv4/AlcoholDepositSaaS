@@ -309,7 +309,9 @@
       "filterPending": "Pending",
       "filterInStore": "Ready",
       "filterPendingWithdraw": "Withdrawing",
-      "filterExpiring": "Expiring"
+      "filterExpiring": "Expiring",
+      "tapToCancel": "Tap to cancel request",
+      "waitingStaffConfirm": "Waiting for staff"
     },
     "deposit": {
       "title": "Deposit Bottle",

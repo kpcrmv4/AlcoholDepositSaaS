@@ -309,7 +309,9 @@
       "filterPending": "รอยืนยัน",
       "filterInStore": "กำลังฝาก",
       "filterPendingWithdraw": "รอเบิก",
-      "filterExpiring": "ใกล้หมดอายุ"
+      "filterExpiring": "ใกล้หมดอายุ",
+      "tapToCancel": "แตะเพื่อยกเลิกคำขอ",
+      "waitingStaffConfirm": "รอพนักงานยืนยัน"
     },
     "deposit": {
       "title": "ฝากเหล้า",
