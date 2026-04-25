@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 interface Row { role: string; permission_key: string; enabled: boolean }
-interface PermDef { key: string; group: string }
+interface PermDef { key: string; groupKey: string }
 
 export default function PermissionsMatrix({
   roles,
@@ -16,6 +17,7 @@ export default function PermissionsMatrix({
   initial: Row[];
 }) {
   const router = useRouter();
+  const t = useTranslations('permissions');
   const initialMap = useMemo(() => {
     const m = new Map<string, boolean>();
     initial.forEach((r) => m.set(`${r.role}:${r.permission_key}`, r.enabled));
@@ -60,17 +62,45 @@ export default function PermissionsMatrix({
       setMsg(`❌ ${b.error || res.statusText}`);
       return;
     }
-    setMsg('✅ บันทึกแล้ว');
+    setMsg(t('saveSuccess'));
     setOverrides(new Map());
     router.refresh();
   }
 
-  // Group permissions by "group" label
+  // Translate a permission key like "deposits.view" → human label.
+  // i18n keys store the underscore form ("deposits_view") because next-intl
+  // treats dots as namespace separators.
+  function permLabel(rawKey: string): string {
+    const safeKey = rawKey.replace(/\./g, '_');
+    try {
+      return t(`keys.${safeKey}` as 'keys.deposits_view');
+    } catch {
+      return rawKey;
+    }
+  }
+
+  function roleLabel(role: string): string {
+    try {
+      return t(`roles.${role}` as 'roles.owner');
+    } catch {
+      return role;
+    }
+  }
+
+  function groupLabel(groupKey: string): string {
+    try {
+      return t(groupKey as 'groupDeposits');
+    } catch {
+      return groupKey;
+    }
+  }
+
+  // Group permissions by groupKey
   const byGroup = useMemo(() => {
     const g = new Map<string, PermDef[]>();
     permissionDefs.forEach((p) => {
-      if (!g.has(p.group)) g.set(p.group, []);
-      g.get(p.group)!.push(p);
+      if (!g.has(p.groupKey)) g.set(p.groupKey, []);
+      g.get(p.groupKey)!.push(p);
     });
     return Array.from(g.entries());
   }, [permissionDefs]);
@@ -81,24 +111,33 @@ export default function PermissionsMatrix({
         <table className="w-full text-sm">
           <thead className="border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950">
             <tr>
-              <th className="sticky left-0 bg-gray-50 px-4 py-2 text-left font-medium dark:bg-gray-950">Permission</th>
+              <th className="sticky left-0 bg-gray-50 px-4 py-2 text-left font-medium dark:bg-gray-950">
+                {t('colPermission')}
+              </th>
               {roles.map((r) => (
-                <th key={r} className="px-3 py-2 text-center text-xs font-medium capitalize">{r}</th>
+                <th key={r} className="px-3 py-2 text-center text-xs font-medium">
+                  {roleLabel(r)}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {byGroup.map(([group, items]) => (
+            {byGroup.map(([groupKey, items]) => (
               <>
-                <tr key={`${group}-h`} className="bg-gray-50 dark:bg-gray-950">
+                <tr key={`${groupKey}-h`} className="bg-gray-50 dark:bg-gray-950">
                   <td colSpan={roles.length + 1} className="px-4 py-1 text-xs font-semibold text-gray-600 dark:text-gray-400">
-                    {group}
+                    {groupLabel(groupKey)}
                   </td>
                 </tr>
                 {items.map((p) => (
                   <tr key={p.key} className="border-b border-gray-100 dark:border-gray-800">
-                    <td className="sticky left-0 bg-white px-4 py-2 font-mono text-xs dark:bg-gray-900">
-                      {p.key}
+                    <td className="sticky left-0 bg-white px-4 py-2 dark:bg-gray-900">
+                      <div className="text-sm text-gray-900 dark:text-gray-100">
+                        {permLabel(p.key)}
+                      </div>
+                      <div className="font-mono text-[10px] text-gray-400 dark:text-gray-500">
+                        {p.key}
+                      </div>
                     </td>
                     {roles.map((r) => (
                       <td key={r} className="px-3 py-2 text-center">
@@ -126,7 +165,7 @@ export default function PermissionsMatrix({
           disabled={overrides.size === 0 || saving}
           className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
         >
-          {saving ? 'กำลังบันทึก…' : `บันทึก ${overrides.size ? `(${overrides.size})` : ''}`}
+          {saving ? t('saving') : `${t('saveButton')}${overrides.size ? ` (${overrides.size})` : ''}`}
         </button>
       </div>
     </div>
