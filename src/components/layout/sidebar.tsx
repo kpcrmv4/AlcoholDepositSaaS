@@ -35,7 +35,7 @@ import { getModuleColors } from '@/lib/utils/module-colors';
 import { useAppStore } from '@/stores/app-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { getAccessibleModules } from '@/lib/modules/registry';
-import { useTenantPath } from '@/lib/tenant';
+import { useEnabledModules, useTenantPath } from '@/lib/tenant';
 import { StoreSwitcher } from './store-switcher';
 import { LanguageSwitcher } from './language-switcher';
 import type { Store } from '@/types/database';
@@ -74,12 +74,13 @@ export function Sidebar({ stores }: SidebarProps) {
   const { user, logout } = useAuthStore();
   const { sidebarOpen, toggleSidebar, theme, toggleTheme } = useAppStore();
   const tenantPath = useTenantPath();
+  const enabledModules = useEnabledModules();
 
-  // เห็นโมดูลตาม role + permission ส่วนตัวที่ได้รับเพิ่ม
+  // เห็นโมดูลตาม tenant allowlist + role + permission ส่วนตัว
   const modules = useMemo(
-    () => (user ? getAccessibleModules(user) : []),
+    () => (user ? getAccessibleModules(user, enabledModules) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user?.role, user?.permissions?.join(',')]
+    [user?.role, user?.permissions?.join(','), enabledModules]
   );
   const collapsed = !sidebarOpen;
 

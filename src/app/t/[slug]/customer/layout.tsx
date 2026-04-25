@@ -62,6 +62,10 @@ function CustomerLayoutInner({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const t = useTranslations('customer.nav');
 
+  // pathname is tenant-scoped (e.g. /t/somchai/customer/deposit) — strip
+  // the /t/{slug} prefix so the comparison against item.href works.
+  const logicalPath = pathname.replace(/^\/t\/[^/]+/, '') || '/';
+
   // Preserve both ?token= and ?store= across nav so context doesn't get lost
   const token = searchParams.get('token');
   const storeCode = searchParams.get('store');
@@ -95,9 +99,9 @@ function CustomerLayoutInner({ children }: { children: React.ReactNode }) {
             {customerNavItems.map((item) => {
               const isActive =
                 item.href === '/customer'
-                  ? pathname === '/customer'
-                  : pathname === item.href ||
-                    pathname.startsWith(item.href + '/');
+                  ? logicalPath === '/customer'
+                  : logicalPath === item.href ||
+                    logicalPath.startsWith(item.href + '/');
               const Icon = item.icon;
 
               return (

@@ -27,6 +27,7 @@ export default async function TenantDetailPage({ params }: Params) {
     { count: userCount },
     { count: branchCount },
     { data: audit },
+    { data: moduleRows },
   ] = await Promise.all([
     supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('tenant_id', id),
     supabase.from('stores').select('*', { count: 'exact', head: true }).eq('tenant_id', id).eq('active', true),
@@ -36,7 +37,13 @@ export default async function TenantDetailPage({ params }: Params) {
       .eq('tenant_id', id)
       .order('created_at', { ascending: false })
       .limit(20),
+    supabase.from('tenant_modules').select('module_key, enabled').eq('tenant_id', id),
   ]);
+
+  const modulesEnabled: Record<string, boolean> = {};
+  for (const row of (moduleRows ?? []) as { module_key: string; enabled: boolean }[]) {
+    modulesEnabled[row.module_key] = row.enabled;
+  }
 
   const planLabel = (plan: string) => {
     try {
@@ -83,7 +90,7 @@ export default async function TenantDetailPage({ params }: Params) {
         <Stat label={t('tenantDetail.statUsers')} value={`${userCount ?? 0} / ${tenant.max_users}`} />
       </div>
 
-      <TenantEditForm tenant={tenant} />
+      <TenantEditForm tenant={tenant} modulesEnabled={modulesEnabled} />
 
       <section className="rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
         <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">{t('tenantDetail.recentAudit')}</h2>
