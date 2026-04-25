@@ -15,12 +15,24 @@ import { isWithdrawalBlocked } from '@/lib/utils/date';
  */
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { depositId, customerName, token, accessToken, withdrawalType } = body as {
+  const {
+    depositId,
+    customerName,
+    token,
+    accessToken,
+    withdrawalType,
+    requestedQty,
+    tableNumber,
+    notes,
+  } = body as {
     depositId: string;
     customerName: string;
     token?: string;
     accessToken?: string;
     withdrawalType?: 'in_store' | 'take_home';
+    requestedQty?: number;
+    tableNumber?: string;
+    notes?: string;
   };
 
   if (!depositId) {
@@ -95,6 +107,14 @@ export async function POST(request: NextRequest) {
   }
 
   // -----------------------------------------------------------------------
+  // Resolve requested quantity (default = full remaining; clamp to 1..remaining)
+  // -----------------------------------------------------------------------
+  const remaining = Number(deposit.remaining_qty) || 0;
+  let qty = typeof requestedQty === 'number' ? requestedQty : remaining;
+  if (!Number.isFinite(qty) || qty <= 0) qty = remaining;
+  if (qty > remaining) qty = remaining;
+
+  // -----------------------------------------------------------------------
   // Create withdrawal request
   // -----------------------------------------------------------------------
   const { error: insertError } = await supabase.from('withdrawals').insert({
@@ -103,7 +123,9 @@ export async function POST(request: NextRequest) {
     line_user_id: lineUserId,
     customer_name: customerName || deposit.customer_name || 'ลูกค้า',
     product_name: deposit.product_name,
-    requested_qty: deposit.remaining_qty,
+    requested_qty: qty,
+    table_number: tableNumber || null,
+    notes: notes || null,
     withdrawal_type: wType,
     status: 'pending',
   });

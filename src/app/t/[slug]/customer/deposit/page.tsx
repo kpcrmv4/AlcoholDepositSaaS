@@ -20,10 +20,18 @@ const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 function DepositContent() {
   const searchParams = useSearchParams();
   const router = useTenantRouter();
-  const { lineUserId, displayName, mode, isLoading: authLoading, error: authError } = useCustomerAuth();
+  const {
+    displayName,
+    mode,
+    isLoading: authLoading,
+    error: authError,
+    store,
+  } = useCustomerAuth();
   const t = useTranslations('customer.deposit');
 
-  const storeId = searchParams.get('storeId');
+  // storeId is resolved by CustomerProvider from the ?store= code in the URL
+  // (the LIFF entry URL only carries store_code, not the UUID).
+  const storeId = store.id ?? searchParams.get('storeId');
   const token = searchParams.get('token');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -211,6 +219,11 @@ function DepositContent() {
       return;
     }
 
+    if (!storeId) {
+      setError(t('errorStoreMissing'));
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
@@ -223,7 +236,7 @@ function DepositContent() {
         tableNumber: tableNumber.trim() || null,
         notes: notes.trim() || null,
         customerPhotoUrl: photoUrl,
-        storeId: storeId || undefined,
+        storeId,
         ...authParams,
       };
 
@@ -239,8 +252,9 @@ function DepositContent() {
       }
 
       setSuccess(true);
-    } catch {
-      setError(t('errorSubmit'));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      setError(msg && msg !== 'Request failed' ? `${t('errorSubmit')} (${msg})` : t('errorSubmit'));
     } finally {
       setIsSubmitting(false);
     }

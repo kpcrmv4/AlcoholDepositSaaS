@@ -161,8 +161,8 @@ export default function CustomerPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Request failed');
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || 'Request failed');
       }
 
       setDeposits((prev) =>
@@ -170,8 +170,11 @@ export default function CustomerPage() {
           d.id === deposit.id ? { ...d, status: 'pending_withdrawal' } : d,
         ),
       );
-    } catch {
-      setError(t('withdrawError'));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      setError(
+        msg && msg !== 'Request failed' ? `${t('withdrawError')} (${msg})` : t('withdrawError'),
+      );
     } finally {
       setRequestingId(null);
     }

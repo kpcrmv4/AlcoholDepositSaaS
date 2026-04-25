@@ -338,7 +338,8 @@
       "errorFileType": "Only JPEG, PNG, WebP, HEIC files are supported",
       "errorFileSize": "File must not exceed 10MB",
       "errorUpload": "Unable to upload photo. Please try again.",
-      "errorSubmit": "Unable to submit request. Please try again."
+      "errorSubmit": "Unable to submit request. Please try again.",
+      "errorStoreMissing": "Store not found. Please open this page from the branch QR code."
     },
     "withdraw": {
       "title": "Request Withdrawal",
@@ -375,7 +376,8 @@
       "statusPending": "Pending",
       "statusApproved": "Approved",
       "statusCompleted": "Completed",
-      "statusRejected": "Rejected"
+      "statusRejected": "Rejected",
+      "loadError": "Unable to load history"
     },
     "promotions": {
       "title": "Promotions",

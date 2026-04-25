@@ -338,7 +338,8 @@
       "errorFileType": "รองรับเฉพาะไฟล์ JPEG, PNG, WebP, HEIC เท่านั้น",
       "errorFileSize": "ไฟล์ต้องมีขนาดไม่เกิน 10MB",
       "errorUpload": "ไม่สามารถอัปโหลดรูปได้ กรุณาลองใหม่",
-      "errorSubmit": "ไม่สามารถส่งคำขอได้ กรุณาลองใหม่"
+      "errorSubmit": "ไม่สามารถส่งคำขอได้ กรุณาลองใหม่",
+      "errorStoreMissing": "ไม่พบรหัสสาขา กรุณาเปิดหน้านี้ผ่าน QR ของสาขา"
     },
     "withdraw": {
       "title": "ขอเบิกเหล้า",
@@ -375,7 +376,8 @@
       "statusPending": "รอดำเนินการ",
       "statusApproved": "อนุมัติแล้ว",
       "statusCompleted": "สำเร็จ",
-      "statusRejected": "ปฏิเสธ"
+      "statusRejected": "ปฏิเสธ",
+      "loadError": "ไม่สามารถโหลดประวัติได้"
     },
     "promotions": {
       "title": "โปรโมชั่น",
