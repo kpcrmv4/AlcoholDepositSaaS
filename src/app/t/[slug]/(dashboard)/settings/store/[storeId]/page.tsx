@@ -40,9 +40,16 @@ import {
   Copy,
   Check,
   Bot,
+  Palette,
 } from 'lucide-react';
 import { TenantLink as Link } from '@/lib/tenant/link';
 import { useTenantRouter, useTenant, useEnabledModules } from '@/lib/tenant';
+import {
+  CUSTOMER_THEMES,
+  isCustomerTheme,
+  DEFAULT_CUSTOMER_THEME,
+  type CustomerThemeKey,
+} from '@/lib/customer-themes';
 import type { ReceiptSettings, PrintServerStatus, PrintServerWorkingHours } from '@/types/database';
 
 // ---------------------------------------------------------------------------
@@ -143,6 +150,9 @@ export default function StoreDetailSettingsPage() {
   const [storeCode, setStoreCode] = useState('');
   const [storeName, setStoreName] = useState('');
   const [isCentral, setIsCentral] = useState(false);
+  const [customerTheme, setCustomerTheme] = useState<CustomerThemeKey>(
+    DEFAULT_CUSTOMER_THEME,
+  );
 
   // LINE OA credentials (per-store)
   const [lineToken, setLineToken] = useState('');
@@ -232,7 +242,7 @@ export default function StoreDetailSettingsPage() {
     // Load store info
     const { data: store } = await supabase
       .from('stores')
-      .select('id, store_code, store_name, is_central, line_token, line_channel_id, line_channel_secret, stock_notify_group_id, deposit_notify_group_id, bar_notify_group_id, borrow_notification_roles')
+      .select('id, store_code, store_name, is_central, customer_theme, line_token, line_channel_id, line_channel_secret, stock_notify_group_id, deposit_notify_group_id, bar_notify_group_id, borrow_notification_roles')
       .eq('id', storeId)
       .single();
 
@@ -240,6 +250,11 @@ export default function StoreDetailSettingsPage() {
       setStoreCode(store.store_code || '');
       setStoreName(store.store_name || '');
       setIsCentral(store.is_central || false);
+      setCustomerTheme(
+        isCustomerTheme(store.customer_theme)
+          ? store.customer_theme
+          : DEFAULT_CUSTOMER_THEME,
+      );
       setLineToken(store.line_token || '');
       setLineChannelId(store.line_channel_id || '');
       setLineChannelSecret(store.line_channel_secret || '');
@@ -668,6 +683,64 @@ export default function StoreDetailSettingsPage() {
                 }`}
               />
             </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Section 1.4: ธีมหน้าลูกค้า (Customer LIFF theme)                    */}
+      {/* Quick view + link to the dedicated picker subpage. Each branch can */}
+      {/* pick from amber / neon / sumi / sunset.                             */}
+      {/* ------------------------------------------------------------------ */}
+      <Card padding="none">
+        <CardHeader
+          title="ธีมหน้าลูกค้า (LIFF)"
+          description="หน้าตาที่ลูกค้าเห็นเมื่อเปิด LIFF ของสาขานี้"
+          action={
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/20">
+              <Palette className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            </div>
+          }
+        />
+        <CardContent>
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 p-4 dark:bg-gray-700/50">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex shrink-0 -space-x-1.5">
+                {CUSTOMER_THEMES[customerTheme].swatch.slice(0, 4).map((c, i) => (
+                  <span
+                    key={i}
+                    className="h-6 w-6 rounded-full ring-2 ring-white dark:ring-gray-800"
+                    style={{ background: c }}
+                  />
+                ))}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                  {CUSTOMER_THEMES[customerTheme].label}
+                </p>
+                <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                  {CUSTOMER_THEMES[customerTheme].tagline}
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <a
+                href={`/preview/${customerTheme}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                ดูตัวอย่าง
+              </a>
+              <Link
+                href={`/t/${tenant.slug}/settings/store/${storeId}/theme`}
+                className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
+              >
+                <Palette className="h-3.5 w-3.5" />
+                เปลี่ยนธีม
+              </Link>
+            </div>
           </div>
         </CardContent>
       </Card>
