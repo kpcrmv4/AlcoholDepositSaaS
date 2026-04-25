@@ -2166,6 +2166,7 @@ export type Database = {
           deposit_notify_group_id: string | null
           id: string
           is_central: boolean | null
+          line_bot_user_id: string | null
           line_channel_id: string | null
           line_channel_secret: string | null
           line_token: string | null
@@ -2183,6 +2184,7 @@ export type Database = {
           deposit_notify_group_id?: string | null
           id?: string
           is_central?: boolean | null
+          line_bot_user_id?: string | null
           line_channel_id?: string | null
           line_channel_secret?: string | null
           line_token?: string | null
@@ -2200,6 +2202,7 @@ export type Database = {
           deposit_notify_group_id?: string | null
           id?: string
           is_central?: boolean | null
+          line_bot_user_id?: string | null
           line_channel_id?: string | null
           line_channel_secret?: string | null
           line_token?: string | null
@@ -2393,6 +2396,7 @@ export type Database = {
           legal_name: string | null
           liff_id: string | null
           line_basic_id: string | null
+          line_bot_user_id: string | null
           line_channel_id: string | null
           line_channel_secret: string | null
           line_channel_token: string | null
@@ -2425,6 +2429,7 @@ export type Database = {
           legal_name?: string | null
           liff_id?: string | null
           line_basic_id?: string | null
+          line_bot_user_id?: string | null
           line_channel_id?: string | null
           line_channel_secret?: string | null
           line_channel_token?: string | null
@@ -2457,6 +2462,7 @@ export type Database = {
           legal_name?: string | null
           liff_id?: string | null
           line_basic_id?: string | null
+          line_bot_user_id?: string | null
           line_channel_id?: string | null
           line_channel_secret?: string | null
           line_channel_token?: string | null

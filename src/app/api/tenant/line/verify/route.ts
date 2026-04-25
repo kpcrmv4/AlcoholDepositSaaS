@@ -44,6 +44,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, status: res.status, error: errorBody });
   }
 
-  const info = await res.json();
+  const info = (await res.json()) as { userId?: string; basicId?: string };
+
+  // Persist bot user ID (and basic ID if not already set) so the webhook
+  // resolver has something to match LINE's webhook `destination` against.
+  if (info.userId) {
+    const svc = createServiceClient();
+    const patch: Record<string, unknown> = { line_bot_user_id: info.userId };
+    if (info.basicId) {
+      const { data: cur } = await svc
+        .from('tenants')
+        .select('line_basic_id')
+        .eq('id', g.ctx.tenant.id)
+        .maybeSingle();
+      if (!cur?.line_basic_id) patch.line_basic_id = info.basicId;
+    }
+    await svc.from('tenants').update(patch).eq('id', g.ctx.tenant.id);
+  }
+
   return NextResponse.json({ ok: true, info });
 }

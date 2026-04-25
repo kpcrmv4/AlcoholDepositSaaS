@@ -89,11 +89,19 @@ const STORE_SELECT =
 /**
  * Resolve the tenant that owns this webhook destination.
  *
- * Order:
- *   1. tenants.line_channel_id = destination  (tenant-mode OA)
- *   2. any store.line_channel_id = destination → its tenant (per-store mode)
+ * LINE webhook events carry `destination = bot's user ID` (Uxxx…), NOT the
+ * numeric Channel ID. We match by `line_bot_user_id` (auto-populated when
+ * the user saves a channel token). For backwards compatibility we also try
+ * `line_channel_id` so a tenant that saved before the column existed still
+ * matches if the destination happens to look like a channel id.
  *
- * Returns null when no tenant or store owns this channel_id.
+ * Order:
+ *   1. tenants.line_bot_user_id = destination  (tenant-mode OA)
+ *   2. tenants.line_channel_id  = destination  (legacy fallback)
+ *   3. any store.line_bot_user_id = destination → its tenant (per-store mode)
+ *   4. any store.line_channel_id  = destination → legacy fallback
+ *
+ * Returns null when no tenant or store owns this destination.
  */
 async function resolveTenantByDestination(
   supabase: SupabaseClient,
@@ -101,24 +109,39 @@ async function resolveTenantByDestination(
 ): Promise<TenantInfo | null> {
   if (!destination) return null;
 
-  // 1. Tenant-mode OA
+  // 1. Tenant-mode OA — match bot user id first, then legacy channel id
+  const { data: tByBot } = await supabase
+    .from('tenants')
+    .select('id, slug, line_mode, line_channel_id, line_channel_secret, line_channel_token')
+    .eq('line_bot_user_id', destination)
+    .maybeSingle();
+  if (tByBot?.line_channel_secret) return tByBot as TenantInfo;
+
   const { data: t } = await supabase
     .from('tenants')
     .select('id, slug, line_mode, line_channel_id, line_channel_secret, line_channel_token')
     .eq('line_channel_id', destination)
     .maybeSingle();
-
-  if (t?.line_channel_secret) {
-    return t as TenantInfo;
-  }
+  if (t?.line_channel_secret) return t as TenantInfo;
 
   // 2. Per-store OA — look up store, then its tenant
-  const { data: s } = await supabase
+  const { data: sByBot } = await supabase
     .from('stores')
     .select('tenant_id, line_channel_id, line_channel_secret, line_token')
-    .eq('line_channel_id', destination)
+    .eq('line_bot_user_id', destination)
     .eq('active', true)
     .maybeSingle();
+
+  let s = sByBot;
+  if (!s?.line_channel_secret) {
+    const fallback = await supabase
+      .from('stores')
+      .select('tenant_id, line_channel_id, line_channel_secret, line_token')
+      .eq('line_channel_id', destination)
+      .eq('active', true)
+      .maybeSingle();
+    s = fallback.data;
+  }
 
   if (s?.line_channel_secret && s.tenant_id) {
     const { data: parent } = await supabase

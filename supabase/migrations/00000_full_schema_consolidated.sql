@@ -77,6 +77,7 @@ CREATE TABLE tenants (
   line_channel_secret  TEXT,
   line_channel_token   TEXT,
   line_basic_id        TEXT,                        -- e.g. '@companyA'
+  line_bot_user_id     TEXT,                        -- Uxxx… returned by /v2/bot/info; used to match webhook destination
   liff_id              TEXT,                        -- LIFF id of this tenant
   line_owner_group_id  TEXT,                        -- LINE group id for owner alerts
 
@@ -97,6 +98,8 @@ CREATE TABLE tenants (
 
 CREATE UNIQUE INDEX idx_tenants_line_channel
   ON tenants(line_channel_id) WHERE line_channel_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_tenants_line_bot_user_id
+  ON tenants(line_bot_user_id) WHERE line_bot_user_id IS NOT NULL;
 
 COMMENT ON TABLE tenants IS
   'Root entity for multi-tenant isolation. Every domain row carries tenant_id.';
@@ -177,6 +180,7 @@ CREATE TABLE stores (
   line_token           TEXT,
   line_channel_id      TEXT,
   line_channel_secret  TEXT,
+  line_bot_user_id     TEXT,                        -- Uxxx… returned by /v2/bot/info; matches webhook destination
 
   -- LINE group ids (always per-store, regardless of line_mode)
   stock_notify_group_id   TEXT,    -- กลุ่มแจ้งเตือนสต๊อก
@@ -195,6 +199,8 @@ CREATE TABLE stores (
 -- Per-store LINE channel must still be globally unique (one channel = one route)
 CREATE UNIQUE INDEX idx_stores_line_channel
   ON stores(line_channel_id) WHERE line_channel_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_stores_line_bot_user_id
+  ON stores(line_bot_user_id) WHERE line_bot_user_id IS NOT NULL;
 
 -- ==========================================
 -- USER ↔ STORE assignment

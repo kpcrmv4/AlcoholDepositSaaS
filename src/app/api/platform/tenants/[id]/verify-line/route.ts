@@ -65,5 +65,21 @@ export async function POST(request: NextRequest, { params }: Params) {
     markAsReadMode?: string;
   };
 
+  // Persist the bot user ID so the webhook resolver can route incoming
+  // events (LINE's webhook `destination` is the bot's user ID, not the
+  // numeric Channel ID).
+  if (info.userId) {
+    const patch: Record<string, unknown> = { line_bot_user_id: info.userId };
+    if (info.basicId) {
+      const { data: cur } = await supabase
+        .from('tenants')
+        .select('line_basic_id')
+        .eq('id', id)
+        .maybeSingle();
+      if (!cur?.line_basic_id) patch.line_basic_id = info.basicId;
+    }
+    await supabase.from('tenants').update(patch).eq('id', id);
+  }
+
   return NextResponse.json({ ok: true, info });
 }

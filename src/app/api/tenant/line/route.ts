@@ -72,6 +72,31 @@ export async function PATCH(request: NextRequest) {
 
   invalidateTenantLiffIdCache(g.ctx.tenant.id);
 
+  // Whenever the channel token changes, derive the bot's user ID + basic ID
+  // from /v2/bot/info and persist them. The webhook resolver matches incoming
+  // events by `line_bot_user_id` (LINE's webhook destination is the bot's
+  // user ID, NOT the numeric Channel ID), so without this step a freshly
+  // saved token routes nowhere.
+  if (typeof update.line_channel_token === 'string' && update.line_channel_token) {
+    try {
+      const infoRes = await fetch('https://api.line.me/v2/bot/info', {
+        headers: { Authorization: `Bearer ${update.line_channel_token}` },
+      });
+      if (infoRes.ok) {
+        const info = (await infoRes.json()) as { userId?: string; basicId?: string };
+        const patch: Record<string, unknown> = {};
+        if (info.userId) patch.line_bot_user_id = info.userId;
+        if (info.basicId && !data.line_basic_id) patch.line_basic_id = info.basicId;
+        if (Object.keys(patch).length > 0) {
+          await svc.from('tenants').update(patch).eq('id', g.ctx.tenant.id);
+        }
+      }
+    } catch {
+      // Don't fail the save just because /v2/bot/info is down — caller can
+      // hit Verify later to populate.
+    }
+  }
+
   return NextResponse.json({
     line_mode: data.line_mode,
     line_channel_id: data.line_channel_id,
