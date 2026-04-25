@@ -7,6 +7,9 @@ const PUBLIC_ROUTES = [
   '/invite',                       // /invite/{token}
   '/api/auth/register',
   '/api/auth/callback',
+  '/api/auth/liff-verify',         // LIFF customer — no Supabase session
+  '/api/auth/customer-token',      // tokenized fallback for customer
+  '/api/customer',                 // /api/customer/* — LIFF/token-authed
   '/api/invite',                   // /api/invite/{token}/accept — auths itself
   '/api/line/webhook',
   '/api/cron',
