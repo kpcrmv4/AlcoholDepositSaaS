@@ -85,44 +85,57 @@ function NeonCard({
           : 'text-cyan-300';
 
   if (isPending) {
+    // pending_confirm: tap-to-cancel only when this is a deposit_request
+    // (no DEP- code yet). Real deposits in pending_confirm render as info.
+    const tappable = d.isRequest;
+    const pendingInner = (
+      <div className="flex gap-3">
+        <NeonBottle glow={glow} percent={100} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200/45">
+                {d.storeName || ''}
+              </p>
+              <h3 className="neon-display mt-0.5 truncate text-[15px] font-bold text-white">
+                {d.productName}
+              </h3>
+            </div>
+            <NeonStatusChip status="pending_confirm" t={t} />
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            {d.tableNumber && (
+              <span className="rounded-md border border-rose-400/30 bg-rose-400/10 px-1.5 py-0.5 text-[10px] font-bold text-rose-200">
+                โต๊ะ {d.tableNumber}
+              </span>
+            )}
+            <span className="font-mono text-[10.5px] text-violet-200/55">
+              {tappable ? t('tapToCancel') : t('waitingStaffConfirm')}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+    const wrapperCls =
+      'relative w-full overflow-hidden rounded-2xl border border-rose-400/25 bg-[#0d0b1a]/85 p-3.5 text-left ring-1 ring-rose-400/10 backdrop-blur-sm';
+
     return (
       <li className="relative">
         <div
           className="pointer-events-none absolute -inset-px rounded-2xl opacity-50 blur-md"
           style={{ background: `radial-gradient(60% 60% at 30% 50%, ${glow}38, transparent 70%)` }}
         />
-        <button
-          type="button"
-          onClick={() => onOpenDetail(d)}
-          className="customer-tap relative w-full overflow-hidden rounded-2xl border border-rose-400/25 bg-[#0d0b1a]/85 p-3.5 text-left ring-1 ring-rose-400/10 backdrop-blur-sm"
-        >
-          <div className="flex gap-3">
-            <NeonBottle glow={glow} percent={100} />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200/45">
-                    {d.storeName || ''}
-                  </p>
-                  <h3 className="neon-display mt-0.5 truncate text-[15px] font-bold text-white">
-                    {d.productName}
-                  </h3>
-                </div>
-                <NeonStatusChip status="pending_confirm" t={t} />
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                {d.tableNumber && (
-                  <span className="rounded-md border border-rose-400/30 bg-rose-400/10 px-1.5 py-0.5 text-[10px] font-bold text-rose-200">
-                    โต๊ะ {d.tableNumber}
-                  </span>
-                )}
-                <span className="font-mono text-[10.5px] text-violet-200/35">
-                  แตะเพื่อยกเลิก
-                </span>
-              </div>
-            </div>
-          </div>
-        </button>
+        {tappable ? (
+          <button
+            type="button"
+            onClick={() => onOpenDetail(d)}
+            className={'customer-tap ' + wrapperCls}
+          >
+            {pendingInner}
+          </button>
+        ) : (
+          <div className={wrapperCls}>{pendingInner}</div>
+        )}
       </li>
     );
   }

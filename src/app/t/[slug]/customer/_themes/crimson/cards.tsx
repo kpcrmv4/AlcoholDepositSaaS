@@ -67,6 +67,11 @@ function CrimsonCard({
   const isPendingW = d.status === 'pending_withdrawal';
   const isInStore = d.status === 'in_store';
   const canWithdraw = isInStore && !isRequesting;
+  // Cancel-modal tap is only meaningful for deposit_requests (no DEP- code
+  // yet, awaiting staff approval). Real deposits in pending_confirm state
+  // (already have a DEP- code) can't be cancelled by the customer — those
+  // render as info-only cards.
+  const tappable = isPending && d.isRequest;
 
   const expiryTone =
     days === null
@@ -172,7 +177,7 @@ function CrimsonCard({
                 </span>
               )}
               <span className="crimson-script text-[13px] text-[#7a1a1a]/75">
-                แตะเพื่อยกเลิก
+                {tappable ? t('tapToCancel') : t('waitingStaffConfirm')}
               </span>
             </div>
           )}
@@ -181,7 +186,7 @@ function CrimsonCard({
     </>
   );
 
-  if (isPending) {
+  if (tappable) {
     return (
       <li>
         <button
