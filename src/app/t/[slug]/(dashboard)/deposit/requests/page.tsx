@@ -49,16 +49,22 @@ interface DepositRequest {
   created_at: string;
 }
 
-const statusVariant: Record<string, 'warning' | 'success' | 'danger'> = {
+const statusVariant: Record<string, 'warning' | 'success' | 'danger' | 'default'> = {
   pending: 'warning',
   approved: 'success',
   rejected: 'danger',
+  cancelled: 'default',
 };
 
 const statusLabelKey: Record<string, string> = {
   pending: 'requests.statusPending',
   approved: 'requests.statusApproved',
   rejected: 'requests.statusRejected',
+  cancelled: 'requests.statusCancelled',
+};
+
+const STATUS_FALLBACK_LABEL: Record<string, string> = {
+  cancelled: 'ลูกค้ายกเลิก',
 };
 
 export default function DepositRequestsPage() {
@@ -373,6 +379,14 @@ export default function DepositRequestsPage() {
                 {processedRequests.map((request) => {
                   const variant = statusVariant[request.status] || statusVariant.pending;
                   const labelKey = statusLabelKey[request.status] || statusLabelKey.pending;
+                  // Translation keys for cancelled may not exist on older
+                  // locale files — fall back to a literal Thai label.
+                  let label: string;
+                  try {
+                    label = t(labelKey);
+                  } catch {
+                    label = STATUS_FALLBACK_LABEL[request.status] || request.status;
+                  }
                   return (
                     <Card key={request.id} padding="none">
                       <div className="p-4 sm:p-5">
@@ -393,7 +407,7 @@ export default function DepositRequestsPage() {
                               </p>
                             </div>
                           </div>
-                          <Badge variant={variant}>{t(labelKey)}</Badge>
+                          <Badge variant={variant}>{label}</Badge>
                         </div>
                       </div>
                     </Card>

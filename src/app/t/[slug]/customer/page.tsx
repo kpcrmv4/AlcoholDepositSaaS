@@ -34,6 +34,14 @@ interface DepositItem {
   storeName: string;
   depositDate: string;
   storeId: string | null;
+  // Pending deposit_request fields — only populated when isRequest=true
+  isRequest: boolean;
+  requestId: string | null;
+  tableNumber: string | null;
+  photoUrl: string | null;
+  notes: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
 }
 
 type FilterKey = 'all' | 'pending' | 'in_store' | 'pending_withdrawal' | 'expiring';
@@ -58,6 +66,10 @@ export default function CustomerPage() {
   const [requestingId, setRequestingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
+  // Detail modal state — used for tap-to-view-details on the customer's
+  // own pending deposit_request rows.
+  const [detail, setDetail] = useState<DepositItem | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // Preserve LIFF/token query across links
   const navQuery = useMemo(() => {
@@ -131,7 +143,7 @@ export default function CustomerPage() {
   function mapDeposits(raw: any[]): DepositItem[] {
     return raw.map((d) => ({
       id: d.id,
-      code: d.deposit_code || '—',
+      code: d.deposit_code || '',
       productName: d.product_name,
       remainingPercent: d.remaining_percent ?? 0,
       remainingQty: d.remaining_qty ?? 0,
@@ -140,8 +152,47 @@ export default function CustomerPage() {
       storeName: d.store?.store_name || '',
       depositDate: d.created_at,
       storeId: d.store_id || null,
+      isRequest: d.is_request === true,
+      requestId: d.request_id || null,
+      tableNumber: d.table_number ?? null,
+      photoUrl: d.customer_photo_url ?? null,
+      notes: d.notes ?? null,
+      customerName: d.customer_name ?? null,
+      customerPhone: d.customer_phone ?? null,
     }));
   }
+
+  const handleCancelRequest = async () => {
+    if (!detail || !detail.isRequest || !detail.requestId) return;
+    setIsCancelling(true);
+    setError(null);
+
+    try {
+      const auth = getAuthPayload();
+      const res = await fetch('/api/customer/deposit-request/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: detail.requestId,
+          token: auth.token || undefined,
+          accessToken: auth.accessToken || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || 'Cancel failed');
+      }
+
+      setDeposits((prev) => prev.filter((d) => d.id !== detail.id));
+      setDetail(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      setError(msg || 'ไม่สามารถยกเลิกคำขอได้');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   const handleRequestWithdrawal = async (deposit: DepositItem) => {
     setRequestingId(deposit.id);
@@ -399,6 +450,9 @@ export default function CustomerPage() {
               deposit={deposit}
               isRequesting={requestingId === deposit.id}
               onWithdraw={handleRequestWithdrawal}
+              onOpenDetail={
+                deposit.isRequest ? () => setDetail(deposit) : undefined
+              }
             />
           ))
         )}
@@ -414,6 +468,16 @@ export default function CustomerPage() {
           {t('viewHistory')}
         </Link>
       </div>
+
+      {/* Detail / cancel modal for pending deposit_requests */}
+      {detail && detail.isRequest && (
+        <RequestDetailModal
+          item={detail}
+          isCancelling={isCancelling}
+          onClose={() => setDetail(null)}
+          onCancel={handleCancelRequest}
+        />
+      )}
     </div>
   );
 }
@@ -465,10 +529,12 @@ function DepositCard({
   deposit,
   isRequesting,
   onWithdraw,
+  onOpenDetail,
 }: {
   deposit: DepositItem;
   isRequesting: boolean;
   onWithdraw: (d: DepositItem) => void;
+  onOpenDetail?: () => void;
 }) {
   const t = useTranslations('customer.home');
   const days = deposit.expiryDate ? daysUntil(deposit.expiryDate) : null;
@@ -476,6 +542,7 @@ function DepositCard({
   const isPendingWithdrawal = deposit.status === 'pending_withdrawal';
   const isInStore = deposit.status === 'in_store';
   const canWithdraw = isInStore && !isRequesting;
+  const isRequest = deposit.isRequest;
 
   const expiryTone =
     days === null
@@ -488,6 +555,37 @@ function DepositCard({
             ? 'text-amber-600 dark:text-amber-400'
             : 'text-emerald-600 dark:text-emerald-400';
 
+  // Pending deposit_request rows have no deposit_code yet. Render them as a
+  // tappable card with table number + "tap for details" hint instead.
+  if (isRequest) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenDetail}
+        className="customer-tap customer-focus-ring w-full rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-left shadow-sm transition-colors hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/30 dark:hover:bg-amber-900/30"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-sm font-bold text-slate-900 dark:text-slate-50">
+              {deposit.productName}
+            </h3>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {deposit.tableNumber && (
+                <span className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">
+                  โต๊ะ {deposit.tableNumber}
+                </span>
+              )}
+              <StatusBadge status={deposit.status} />
+            </div>
+            <p className="mt-2 text-[11px] text-amber-800 dark:text-amber-300">
+              แตะเพื่อดูรายละเอียด · ยกเลิกคำขอ
+            </p>
+          </div>
+        </div>
+      </button>
+    );
+  }
+
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       {/* Top row: name + status */}
@@ -497,9 +595,11 @@ function DepositCard({
             {deposit.productName}
           </h3>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              {deposit.code}
-            </span>
+            {deposit.code && (
+              <span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {deposit.code}
+              </span>
+            )}
             <StatusBadge status={deposit.status} />
           </div>
         </div>
@@ -612,5 +712,122 @@ function StatusBadge({ status }: { status: string }) {
       <CheckCircle2 className="h-2.5 w-2.5" />
       {t('inStore')}
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RequestDetailModal — view + cancel a pending deposit_request
+// ---------------------------------------------------------------------------
+function RequestDetailModal({
+  item,
+  isCancelling,
+  onClose,
+  onCancel,
+}: {
+  item: DepositItem;
+  isCancelling: boolean;
+  onClose: () => void;
+  onCancel: () => void;
+}) {
+  const submittedAt = new Date(item.depositDate).toLocaleString('th-TH', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 px-4 py-6 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl dark:bg-slate-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
+              คำขอฝากเหล้า · รอ Staff อนุมัติ
+            </p>
+            <h3 className="mt-0.5 truncate text-base font-bold text-slate-900 dark:text-slate-50">
+              {item.storeName || 'ร้าน'}
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="customer-tap customer-focus-ring -mr-1 -mt-1 flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+            aria-label="ปิด"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Photo */}
+        {item.photoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.photoUrl}
+            alt=""
+            className="mt-3 h-40 w-full rounded-xl object-cover"
+          />
+        )}
+
+        {/* Detail rows */}
+        <dl className="mt-3 space-y-1.5 rounded-xl bg-slate-50 px-3 py-2.5 text-sm dark:bg-slate-800/60">
+          <DetailRow label="ชื่อ" value={item.customerName || '—'} />
+          {item.customerPhone && (
+            <DetailRow label="เบอร์โทร" value={item.customerPhone} />
+          )}
+          {item.tableNumber && (
+            <DetailRow label="โต๊ะ" value={item.tableNumber} />
+          )}
+          <DetailRow label="รายการ" value={item.productName} />
+          {item.notes && <DetailRow label="หมายเหตุ" value={item.notes} />}
+          <DetailRow label="ส่งเมื่อ" value={submittedAt} />
+        </dl>
+
+        {/* Actions */}
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row-reverse">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isCancelling}
+            className="customer-tap customer-focus-ring flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isCancelling ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <X className="h-4 w-4" />
+            )}
+            {isCancelling ? 'กำลังยกเลิก...' : 'ยกเลิกคำขอ'}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isCancelling}
+            className="customer-tap customer-focus-ring flex flex-1 items-center justify-center rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+          >
+            ปิด
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <dt className="w-16 shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        {label}
+      </dt>
+      <dd className="min-w-0 flex-1 text-sm font-semibold text-slate-900 dark:text-slate-50">
+        {value}
+      </dd>
+    </div>
   );
 }

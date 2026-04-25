@@ -49,11 +49,12 @@ async function getDeposits(lineUserId: string, opts: GetDepositsOptions = {}) {
 
   // LIFF deposit-request stays in `deposit_requests` until staff approves.
   // Surface those as virtual `pending_confirm` deposits so the customer's
-  // "รอยืนยัน" tab reflects what they just submitted.
+  // "รอยืนยัน" tab reflects what they just submitted. Include enough fields
+  // for the LIFF detail modal (table_number, photo, notes) and cancel action.
   let requestsQuery = supabase
     .from('deposit_requests')
     .select(
-      'id, store_id, product_name, quantity, customer_name, notes, status, created_at, store:stores(store_name)',
+      'id, store_id, product_name, quantity, customer_name, customer_phone, table_number, customer_photo_url, notes, status, created_at, store:stores(store_name)',
     )
     .eq('line_user_id', lineUserId)
     .eq('status', 'pending')
@@ -74,6 +75,7 @@ async function getDeposits(lineUserId: string, opts: GetDepositsOptions = {}) {
   // never offer a withdrawal action (status !== 'in_store').
   const virtualPending = (requests || []).map((r) => ({
     id: `req-${r.id}`,
+    request_id: r.id,
     deposit_code: null,
     product_name: r.product_name || 'รอ Staff ระบุรายการ',
     category: null,
@@ -85,6 +87,12 @@ async function getDeposits(lineUserId: string, opts: GetDepositsOptions = {}) {
     store_id: r.store_id,
     store: r.store,
     is_request: true,
+    // Detail fields for the LIFF modal — only present on virtual pending rows.
+    table_number: r.table_number ?? null,
+    customer_photo_url: r.customer_photo_url ?? null,
+    notes: r.notes ?? null,
+    customer_name: r.customer_name ?? null,
+    customer_phone: r.customer_phone ?? null,
   }));
 
   // Sort combined list by created_at desc (deposits + virtualPending).
