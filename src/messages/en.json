@@ -311,6 +311,7 @@
       "filterPendingWithdraw": "Withdrawing",
       "filterExpiring": "Expiring",
       "tapToCancel": "Tap to cancel request",
+      "tapToView": "Tap to view details",
       "waitingStaffConfirm": "Waiting for staff"
     },
     "deposit": {

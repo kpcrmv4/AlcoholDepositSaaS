@@ -72,9 +72,6 @@ function SunsetCard({
   const days = d.expiryDate ? daysUntil(d.expiryDate) : null;
   const isPending = d.status === 'pending_confirm';
   const isPendingW = d.status === 'pending_withdrawal';
-  // Tap-to-cancel only fires for deposit_requests (no DEP- code yet).
-  // Real deposits in pending_confirm render as info-only.
-  const tappable = isPending && d.isRequest;
   const isInStore = d.status === 'in_store';
   const canWithdraw = isInStore && !isRequesting;
   const liquid = STATUS_LIQUID[d.status] ?? '#ea580c';
@@ -172,7 +169,7 @@ function SunsetCard({
                 </span>
               )}
               <span className="font-medium text-[10.5px] text-orange-900/65">
-                {tappable ? t('tapToCancel') : t('waitingStaffConfirm')}
+                {d.isRequest ? t('tapToCancel') : t('tapToView')}
               </span>
             </div>
           )}
@@ -181,7 +178,7 @@ function SunsetCard({
     </>
   );
 
-  if (tappable) {
+  if (isPending) {
     return (
       <li>
         <button

@@ -67,11 +67,9 @@ function CrimsonCard({
   const isPendingW = d.status === 'pending_withdrawal';
   const isInStore = d.status === 'in_store';
   const canWithdraw = isInStore && !isRequesting;
-  // Cancel-modal tap is only meaningful for deposit_requests (no DEP- code
-  // yet, awaiting staff approval). Real deposits in pending_confirm state
-  // (already have a DEP- code) can't be cancelled by the customer — those
-  // render as info-only cards.
-  const tappable = isPending && d.isRequest;
+  // ALL pending_confirm rows open the detail modal on tap. Modal then
+  // shows a Cancel button only when d.isRequest is true (deposit_request
+  // the customer can pull back); real deposits get info + close-only.
 
   const expiryTone =
     days === null
@@ -177,7 +175,7 @@ function CrimsonCard({
                 </span>
               )}
               <span className="crimson-script text-[13px] text-[#7a1a1a]/75">
-                {tappable ? t('tapToCancel') : t('waitingStaffConfirm')}
+                {d.isRequest ? t('tapToCancel') : t('tapToView')}
               </span>
             </div>
           )}
@@ -186,7 +184,7 @@ function CrimsonCard({
     </>
   );
 
-  if (tappable) {
+  if (isPending) {
     return (
       <li>
         <button

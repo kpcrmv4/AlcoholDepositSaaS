@@ -311,6 +311,7 @@
       "filterPendingWithdraw": "รอเบิก",
       "filterExpiring": "ใกล้หมดอายุ",
       "tapToCancel": "แตะเพื่อยกเลิกคำขอ",
+      "tapToView": "แตะเพื่อดูรายละเอียด",
       "waitingStaffConfirm": "รอพนักงานยืนยัน"
     },
     "deposit": {
