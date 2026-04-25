@@ -28,6 +28,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Resolve the caller's tenant_id. Storage RLS on `deposit-photos` requires
+  // the first path segment to equal `get_user_tenant_id()::text`, so without
+  // this prefix every upload fails with a 500 from a denied RLS policy.
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('tenant_id')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const tenantId = profile?.tenant_id;
+  if (!tenantId) {
+    return NextResponse.json({ error: 'No tenant context for user' }, { status: 403 });
+  }
+
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
   const folder = (formData.get('folder') as string) || 'general';
@@ -66,10 +80,12 @@ export async function POST(request: NextRequest) {
     // or add sharp when needed.
     if (ext === 'heic') ext = 'jpg';
 
-    // Generate unique filename
+    // Generate unique filename. The leading `${tenantId}/` segment is what
+    // the storage RLS policy "Tenant users upload to own tenant folder"
+    // checks (storage.foldername(name)[1] = get_user_tenant_id()::text).
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 8);
-    const filePath = `${folder}/${timestamp}-${random}.${ext}`;
+    const filePath = `${tenantId}/${folder}/${timestamp}-${random}.${ext}`;
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage
