@@ -81,6 +81,10 @@ interface Deposit {
   is_vip: boolean;
   is_no_deposit: boolean;
   created_at: string;
+  /** Virtual row sourced from deposit_requests (pre-approval). Real deposits never set this. */
+  is_request?: boolean;
+  /** Original deposit_requests.id when is_request=true. Used to wire approve/reject actions. */
+  request_id?: string;
 }
 
 interface PendingRequest {
@@ -125,11 +129,14 @@ const statusVariantMap: Record<string, 'default' | 'success' | 'warning' | 'dang
   expired: 'danger',
   transfer_pending: 'warning',
   transferred_out: 'info',
+  // Virtual status used for deposit_requests rendered as virtual deposit rows
+  request: 'warning',
 };
 
-const DEPOSIT_TAB_IDS = ['all', 'in_store', 'pending_confirm', 'expired', 'transfer_pending', 'vip'] as const;
+const DEPOSIT_TAB_IDS = ['all', 'request', 'in_store', 'pending_confirm', 'expired', 'transfer_pending', 'vip'] as const;
 const DEPOSIT_TAB_KEYS: Record<string, string> = {
   all: 'tabs.all',
+  request: 'tabs.request',
   in_store: 'tabs.inStore',
   pending_confirm: 'tabs.pendingConfirm',
   expired: 'tabs.expired',
@@ -392,10 +399,51 @@ export default function DepositPage() {
     if (error) {
       toast({ type: 'error', title: t('loadError'), message: t('loadDepositError') });
     }
-    if (data) {
-      setDeposits(data as Deposit[]);
-    }
-    setPendingRequests((requestData as PendingRequest[] | null) || []);
+
+    // Merge real deposits and customer LIFF deposit_requests into one list so
+    // the page renders them in the same table/card grid. Virtual request rows
+    // carry is_request=true and a synthetic status='request' that the tabs +
+    // status badge logic recognise.
+    const requests = (requestData as PendingRequest[] | null) || [];
+    setPendingRequests(requests);
+
+    const realDeposits = (data as Deposit[]) || [];
+    const virtualRequestRows: Deposit[] = requests.map((r) => ({
+      id: `req-${r.id}`,
+      store_id: r.store_id,
+      deposit_code: '',
+      customer_id: null,
+      line_user_id: r.line_user_id,
+      customer_name: r.customer_name || 'ลูกค้า',
+      customer_phone: r.customer_phone,
+      product_name: r.product_name || 'รอ Staff ระบุรายการ',
+      category: null,
+      quantity: r.quantity ?? 0,
+      remaining_qty: r.quantity ?? 0,
+      remaining_percent: 100,
+      table_number: r.table_number,
+      status: 'request',
+      expiry_date: null,
+      received_by: null,
+      notes: r.notes,
+      photo_url: null,
+      customer_photo_url: r.customer_photo_url,
+      received_photo_url: null,
+      confirm_photo_url: null,
+      is_vip: false,
+      is_no_deposit: false,
+      created_at: r.created_at,
+      is_request: true,
+      request_id: r.id,
+    }));
+
+    const merged = [...virtualRequestRows, ...realDeposits].sort((a, b) => {
+      // Virtual request rows first (most actionable), then by created_at desc.
+      if (a.is_request && !b.is_request) return -1;
+      if (!a.is_request && b.is_request) return 1;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+    setDeposits(merged);
 
     // Load stats in parallel (respecting date filter)
     await loadStats(supabase, currentStoreId, dateFilterEnabled, dateFrom, dateTo);
@@ -736,6 +784,7 @@ export default function DepositPage() {
 
   const depositTabs = DEPOSIT_TAB_IDS.map((id) => ({ id, label: t(DEPOSIT_TAB_KEYS[id]) }));
   const tabsWithCounts = depositTabs.map((tab) => {
+    if (tab.id === 'request') return { ...tab, count: stats.pendingRequestsCount };
     if (tab.id === 'in_store') return { ...tab, count: stats.activeCount };
     if (tab.id === 'pending_confirm') return { ...tab, count: stats.pendingCount };
     if (tab.id === 'expired') return { ...tab, count: stats.expiredCount };
@@ -912,121 +961,24 @@ export default function DepositPage() {
         </div>
       </div>
 
-      {/* Pending customer LIFF requests rendered ABOVE the deposit list so
-          they show up even when the store has no real deposits yet. Hidden
-          on the transfer_pending tab where the batch view replaces the list. */}
-      {!isLoading &&
-        pendingRequests.length > 0 &&
-        (activeTab === 'all' || activeTab === 'pending_confirm') && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-amber-900 dark:text-amber-200">
-                คำขอฝากเหล้าผ่าน Line ({pendingRequests.length})
-              </h2>
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                รอ Staff อนุมัติ
-              </span>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {pendingRequests.map((req) => (
-                <Card
-                  key={req.id}
-                  padding="none"
-                  className="border-amber-300 dark:border-amber-800/60"
-                >
-                  <div className="p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="truncate font-semibold text-gray-900 dark:text-white">
-                          {req.customer_name || 'ลูกค้า'}
-                        </h3>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                          {req.table_number && (
-                            <span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800/50">
-                              โต๊ะ {req.table_number}
-                            </span>
-                          )}
-                          {req.customer_phone && <span>{req.customer_phone}</span>}
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {formatThaiDate(req.created_at)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {req.customer_photo_url && (
-                      <button
-                        type="button"
-                        onClick={() => setViewingPhoto(req.customer_photo_url!)}
-                        className="mt-3 block w-full overflow-hidden rounded-lg"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={req.customer_photo_url}
-                          alt="รูปจากลูกค้า"
-                          className="h-32 w-full object-cover"
-                        />
-                      </button>
-                    )}
-
-                    {req.notes && (
-                      <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
-                        {req.notes}
-                      </p>
-                    )}
-
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                      <Button
-                        className="flex-1"
-                        icon={<Plus className="h-4 w-4" />}
-                        onClick={() => {
-                          setApprovingRequest(req);
-                          setShowNewForm(true);
-                        }}
-                      >
-                        อนุมัติเข้าระบบ
-                      </Button>
-                      <Button
-                        variant="danger"
-                        className="flex-1"
-                        icon={<XCircle className="h-4 w-4" />}
-                        onClick={() => setRejectingRequest(req)}
-                      >
-                        ปฏิเสธ
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
       {/* Deposits Table / List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
         </div>
       ) : filteredDeposits.length === 0 ? (
-        // Show the EmptyState only when both real deposits AND pending requests
-        // are empty — otherwise the "no deposits" message would overshadow the
-        // request cards we just rendered above.
-        pendingRequests.length === 0 ||
-        (activeTab !== 'all' && activeTab !== 'pending_confirm') ? (
-          <EmptyState
-            icon={Wine}
-            title={t('noDeposits')}
-            description={searchQuery ? t('noSearchResults') : t('noDepositsYet')}
-            action={
-              !searchQuery ? (
-                <Button icon={<Plus className="h-4 w-4" />} onClick={() => setShowNewForm(true)}>
-                  {t('newDeposit')}
-                </Button>
-              ) : undefined
-            }
-          />
-        ) : null
+        <EmptyState
+          icon={Wine}
+          title={t('noDeposits')}
+          description={searchQuery ? t('noSearchResults') : t('noDepositsYet')}
+          action={
+            !searchQuery ? (
+              <Button icon={<Plus className="h-4 w-4" />} onClick={() => setShowNewForm(true)}>
+                {t('newDeposit')}
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <>
           {/* Batch action bar for expired tab */}
@@ -1230,17 +1182,32 @@ export default function DepositPage() {
                     {filteredDeposits.map((deposit) => {
                       const expiryDays = deposit.expiry_date ? daysUntil(deposit.expiry_date) : null;
                       const isExpiringSoon = expiryDays !== null && expiryDays <= 7 && expiryDays > 0 && deposit.status === 'in_store';
+                      const isReq = deposit.is_request === true;
 
                       return (
                         <tr
                           key={deposit.id}
-                          className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
-                          onClick={() => setSelectedDeposit(deposit)}
+                          className={cn(
+                            'transition-colors',
+                            isReq
+                              ? 'bg-amber-50/50 hover:bg-amber-50 dark:bg-amber-900/10 dark:hover:bg-amber-900/20'
+                              : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30'
+                          )}
+                          onClick={() => {
+                            if (isReq) return; // request rows have their own action buttons
+                            setSelectedDeposit(deposit);
+                          }}
                         >
                           <td className="whitespace-nowrap px-5 py-4">
-                            <span className="font-mono text-sm font-medium text-indigo-600 dark:text-indigo-400">
-                              {deposit.deposit_code}
-                            </span>
+                            {isReq ? (
+                              <span className="text-xs italic text-gray-500 dark:text-gray-400">
+                                ยังไม่มีรหัส
+                              </span>
+                            ) : (
+                              <span className="font-mono text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                                {deposit.deposit_code}
+                              </span>
+                            )}
                           </td>
                           <td className="px-5 py-4">
                             <p className="text-sm font-medium text-gray-900 dark:text-white">
@@ -1251,9 +1218,19 @@ export default function DepositPage() {
                                 {deposit.customer_phone}
                               </p>
                             )}
+                            {isReq && deposit.table_number && (
+                              <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300">
+                                โต๊ะ {deposit.table_number}
+                              </p>
+                            )}
                           </td>
                           <td className="px-5 py-4">
-                            <p className="text-sm text-gray-900 dark:text-white">
+                            <p className={cn(
+                              'text-sm',
+                              isReq
+                                ? 'italic text-gray-500 dark:text-gray-400'
+                                : 'text-gray-900 dark:text-white'
+                            )}>
                               {deposit.product_name}
                             </p>
                             {deposit.category && (
@@ -1263,12 +1240,18 @@ export default function DepositPage() {
                             )}
                           </td>
                           <td className="whitespace-nowrap px-5 py-4 text-right">
-                            <span className="text-sm font-medium text-gray-900 dark:text-white">
-                              {formatNumber(deposit.remaining_qty)}
-                            </span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {' / '}{formatNumber(deposit.quantity)}
-                            </span>
+                            {isReq ? (
+                              <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
+                            ) : (
+                              <>
+                                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                  {formatNumber(deposit.remaining_qty)}
+                                </span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  {' / '}{formatNumber(deposit.quantity)}
+                                </span>
+                              </>
+                            )}
                           </td>
                           <td className="whitespace-nowrap px-5 py-4">
                             <div className="flex items-center gap-1.5">
@@ -1290,7 +1273,9 @@ export default function DepositPage() {
                             </div>
                           </td>
                           <td className="whitespace-nowrap px-5 py-4">
-                            {deposit.is_vip ? (
+                            {isReq ? (
+                              <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
+                            ) : deposit.is_vip ? (
                               <span className="text-sm font-medium text-amber-600 dark:text-amber-400">{t('mobile.noExpiry')}</span>
                             ) : deposit.expiry_date ? (
                               <div>
@@ -1311,17 +1296,48 @@ export default function DepositPage() {
                             )}
                           </td>
                           <td className="whitespace-nowrap px-5 py-4 text-right">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              icon={<Eye className="h-4 w-4" />}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedDeposit(deposit);
-                              }}
-                            >
-                              {t('table.viewDetail')}
-                            </Button>
+                            {isReq ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  icon={<Plus className="h-3.5 w-3.5" />}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const reqRow = pendingRequests.find((p) => p.id === deposit.request_id);
+                                    if (reqRow) {
+                                      setApprovingRequest(reqRow);
+                                      setShowNewForm(true);
+                                    }
+                                  }}
+                                >
+                                  อนุมัติ
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  icon={<XCircle className="h-3.5 w-3.5" />}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const reqRow = pendingRequests.find((p) => p.id === deposit.request_id);
+                                    if (reqRow) setRejectingRequest(reqRow);
+                                  }}
+                                >
+                                  ปฏิเสธ
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                icon={<Eye className="h-4 w-4" />}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedDeposit(deposit);
+                                }}
+                              >
+                                {t('table.viewDetail')}
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -1340,6 +1356,93 @@ export default function DepositPage() {
 
               const showCheckbox = activeTab === 'expired' && deposit.status === 'expired' && user && user.role !== 'customer';
               const isChecked = batchSelectedIds.has(deposit.id);
+              const isReq = deposit.is_request === true;
+
+              // Customer LIFF deposit_request — render with amber framing,
+              // photo preview, and inline approve/reject buttons (no detail
+              // drill-down because there's no real deposit row yet).
+              if (isReq) {
+                return (
+                  <Card
+                    key={deposit.id}
+                    padding="none"
+                    className="border-amber-300 bg-amber-50/60 dark:border-amber-800/60 dark:bg-amber-900/10"
+                  >
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="warning" size="sm">
+                              {DEPOSIT_STATUS_LABELS.request}
+                            </Badge>
+                            {deposit.table_number && (
+                              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                                โต๊ะ {deposit.table_number}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 font-medium text-gray-900 dark:text-white">
+                            {deposit.customer_name}
+                          </p>
+                          {deposit.customer_phone && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {deposit.customer_phone}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {deposit.customer_photo_url && (
+                        <button
+                          type="button"
+                          onClick={() => setViewingPhoto(deposit.customer_photo_url!)}
+                          className="mt-3 block w-full overflow-hidden rounded-lg"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={deposit.customer_photo_url}
+                            alt="รูปจากลูกค้า"
+                            className="h-32 w-full object-cover"
+                          />
+                        </button>
+                      )}
+
+                      {deposit.notes && (
+                        <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                          {deposit.notes}
+                        </p>
+                      )}
+
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                        <Button
+                          className="flex-1"
+                          icon={<Plus className="h-4 w-4" />}
+                          onClick={() => {
+                            const reqRow = pendingRequests.find((p) => p.id === deposit.request_id);
+                            if (reqRow) {
+                              setApprovingRequest(reqRow);
+                              setShowNewForm(true);
+                            }
+                          }}
+                        >
+                          อนุมัติเข้าระบบ
+                        </Button>
+                        <Button
+                          variant="danger"
+                          className="flex-1"
+                          icon={<XCircle className="h-4 w-4" />}
+                          onClick={() => {
+                            const reqRow = pendingRequests.find((p) => p.id === deposit.request_id);
+                            if (reqRow) setRejectingRequest(reqRow);
+                          }}
+                        >
+                          ปฏิเสธ
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              }
 
               return (
                 <Card

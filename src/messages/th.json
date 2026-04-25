@@ -1043,6 +1043,7 @@
     "printSentMessage": "รอเครื่องพิมพ์ดำเนินการ",
     "tabs": {
       "all": "ทั้งหมด",
+      "request": "คำขอใหม่",
       "inStore": "ในร้าน",
       "pendingConfirm": "รอยืนยัน",
       "expired": "หมดอายุ",

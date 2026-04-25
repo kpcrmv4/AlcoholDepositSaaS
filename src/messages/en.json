@@ -1043,6 +1043,7 @@
     "printSentMessage": "Waiting for printer",
     "tabs": {
       "all": "All",
+      "request": "New Request",
       "inStore": "In Store",
       "pendingConfirm": "Pending Confirm",
       "expired": "Expired",
