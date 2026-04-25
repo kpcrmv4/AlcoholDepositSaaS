@@ -53,12 +53,34 @@ function isCustomerLegacyPath(pathname: string): boolean {
   return pathname === '/customer' || pathname.startsWith('/customer/');
 }
 
+/**
+ * Customer LIFF pages run inside the LINE in-app browser with no Supabase
+ * session — auth is handled client-side via the LIFF SDK / customer-token
+ * URL param. The middleware MUST NOT redirect them to /login, otherwise
+ * tapping the "เริ่มต้นใช้งาน" Flex button bounces the user to the staff
+ * login screen instead of opening the deposit portal.
+ */
+function isCustomerLiffPath(pathname: string): boolean {
+  return /^\/t\/[^/]+\/customer(\/.*)?$/.test(pathname);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (isPublic(pathname)) return NextResponse.next();
+  // Surface the pathname into the request headers so RSC layouts can
+  // branch on it (e.g. t/[slug]/layout.tsx skips its auth guard when
+  // the user is on /customer/*).
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-pathname', pathname);
 
-  let response = NextResponse.next({ request: { headers: request.headers } });
+  if (isPublic(pathname)) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+  if (isCustomerLiffPath(pathname)) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -70,7 +92,7 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({ request: { headers: request.headers } });
+          response = NextResponse.next({ request: { headers: requestHeaders } });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );

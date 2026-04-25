@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { TenantProvider } from '@/lib/tenant/context';
@@ -11,7 +12,31 @@ interface LayoutProps {
   params: Promise<{ slug: string }>;
 }
 
-async function guard(slug: string) {
+/** Read the current pathname from the headers Next.js exposes in RSC. */
+async function getCurrentPathname(): Promise<string> {
+  const h = await headers();
+  return (
+    h.get('x-pathname') ||
+    h.get('x-invoke-path') ||
+    h.get('next-url') ||
+    ''
+  );
+}
+
+function isCustomerPath(pathname: string, slug: string): boolean {
+  const prefix = `/t/${slug}/customer`;
+  return pathname === prefix || pathname.startsWith(prefix + '/');
+}
+
+interface StaffCtx {
+  tenant: Awaited<ReturnType<typeof resolveTenantBySlug>>;
+  role: string;
+  userId: string;
+  isPlatformAdmin: boolean;
+}
+
+/** Resolve auth + tenant for staff routes (everything outside /customer). */
+async function guardStaff(slug: string): Promise<StaffCtx> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/login?redirect=/t/${slug}`);
@@ -25,9 +50,8 @@ async function guard(slug: string) {
   const tenant = await resolveTenantBySlug(slug);
   if (!tenant) notFound();
 
-  // Platform admins are allowed to impersonate
   if (platformAdmin) {
-    return { tenant, role: 'owner' as const, userId: user.id, isPlatformAdmin: true };
+    return { tenant, role: 'owner', userId: user.id, isPlatformAdmin: true };
   }
 
   if (!profile?.tenant_id || profile.tenant_id !== tenant.id || profile.active === false) {
@@ -42,25 +66,39 @@ async function guard(slug: string) {
 /**
  * Tenant layout — intentionally chrome-free.
  *
- * The dashboard sub-layout (`(dashboard)/layout.tsx`) and the customer
- * sub-layout each render their own full-screen UI (sidebar / drawer /
- * customer theme). Adding a global tenant header here would just nest
- * that inside another bar, and it leaked the platform identity onto
- * what should look like the company's own portal.
+ * Two access paths:
+ *   • Staff routes (everything except /customer): require an authenticated
+ *     Supabase session belonging to this tenant. Suspended tenants get
+ *     bounced to /suspended.
+ *   • Customer LIFF routes (/customer/*): public — auth is handled client-
+ *     side by the LIFF SDK / customer-token URL param, since the LINE in-
+ *     app browser has no Supabase cookies. We still resolve the tenant by
+ *     slug so the LIFF page can read its branding/liff_id from context.
  *
- * The only chrome we keep is a thin amber strip when a platform admin
- * is impersonating, since that's safety information they need to see
- * regardless of which sub-layout renders.
+ * The dashboard sub-layout (`(dashboard)/layout.tsx`) and the customer
+ * sub-layout each render their own full-screen UI; we don't add chrome
+ * here. The only thing we ever render is a thin amber strip when a
+ * platform admin is impersonating a tenant.
  */
 export default async function TenantLayout({ children, params }: LayoutProps) {
   const { slug } = await params;
-  const ctx = await guard(slug);
+  const pathname = await getCurrentPathname();
+  const customerPath = isCustomerPath(pathname, slug);
+
+  if (customerPath) {
+    const tenant = await resolveTenantBySlug(slug);
+    if (!tenant) notFound();
+    if (!isTenantActive(tenant)) redirect('/suspended');
+    return <TenantProvider tenant={tenant}>{children}</TenantProvider>;
+  }
+
+  const ctx = await guardStaff(slug);
 
   return (
-    <TenantProvider tenant={ctx.tenant}>
+    <TenantProvider tenant={ctx.tenant!}>
       {ctx.isPlatformAdmin && (
         <div className="bg-amber-500 px-4 py-1 text-center text-xs font-medium text-amber-950">
-          ⚠️ Platform admin — impersonating <strong>{ctx.tenant.company_name}</strong> ({ctx.tenant.slug})
+          ⚠️ Platform admin — impersonating <strong>{ctx.tenant!.company_name}</strong> ({ctx.tenant!.slug})
         </div>
       )}
       {children}
