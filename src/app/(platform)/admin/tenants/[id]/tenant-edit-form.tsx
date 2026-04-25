@@ -32,30 +32,39 @@ interface ResetResult {
 }
 
 interface ModuleEntry {
+  /** Canonical kebab-case key stored in tenant_modules.module_key */
   key: string;
-  label: string;
-  group: string;
+  /** Translation lookup. Module name → modules.{i18nName}.name */
+  i18nName: string;
+  /** Translation lookup for group header → platformAdmin.tenantDetail.{groupKey} */
+  groupKey:
+    | 'moduleGroupCore'
+    | 'moduleGroupInventory'
+    | 'moduleGroupReports'
+    | 'moduleGroupAnalytics'
+    | 'moduleGroupHelp'
+    | 'moduleGroupSystem';
 }
 
 const MODULE_CATALOG: ModuleEntry[] = [
-  { key: 'overview',                 label: 'Overview',                  group: 'หลัก' },
-  { key: 'chat',                     label: 'Chat',                      group: 'หลัก' },
-  { key: 'stock',                    label: 'Stock / Count / OCR',       group: 'คลังสินค้า' },
-  { key: 'deposit',                  label: 'Deposit / Withdrawal',      group: 'คลังสินค้า' },
-  { key: 'transfer',                 label: 'Transfer between branches', group: 'คลังสินค้า' },
-  { key: 'borrow',                   label: 'Borrow between branches',   group: 'คลังสินค้า' },
-  { key: 'hq-warehouse',             label: 'HQ Warehouse',              group: 'คลังสินค้า' },
-  { key: 'commission',               label: 'Commission / AE',           group: 'คลังสินค้า' },
-  { key: 'reports',                  label: 'Reports',                   group: 'รายงาน' },
-  { key: 'activity',                 label: 'Activity log',              group: 'รายงาน' },
-  { key: 'performance-staff',        label: 'Performance — staff',       group: 'วิเคราะห์' },
-  { key: 'performance-stores',       label: 'Performance — stores',      group: 'วิเคราะห์' },
-  { key: 'performance-operations',   label: 'Performance — operations',  group: 'วิเคราะห์' },
-  { key: 'performance-customers',    label: 'Performance — customers',   group: 'วิเคราะห์' },
-  { key: 'guide',                    label: 'Guide',                     group: 'ช่วยเหลือ' },
-  { key: 'announcements',            label: 'Announcements',             group: 'ระบบ' },
-  { key: 'users',                    label: 'Users',                     group: 'ระบบ' },
-  { key: 'settings',                 label: 'Settings (in-app)',         group: 'ระบบ' },
+  { key: 'overview',               i18nName: 'overview',               groupKey: 'moduleGroupCore' },
+  { key: 'chat',                   i18nName: 'chat',                   groupKey: 'moduleGroupCore' },
+  { key: 'stock',                  i18nName: 'stock',                  groupKey: 'moduleGroupInventory' },
+  { key: 'deposit',                i18nName: 'deposit',                groupKey: 'moduleGroupInventory' },
+  { key: 'transfer',               i18nName: 'transfer',               groupKey: 'moduleGroupInventory' },
+  { key: 'borrow',                 i18nName: 'borrow',                 groupKey: 'moduleGroupInventory' },
+  { key: 'hq-warehouse',           i18nName: 'hqWarehouse',            groupKey: 'moduleGroupInventory' },
+  { key: 'commission',             i18nName: 'commission',             groupKey: 'moduleGroupInventory' },
+  { key: 'reports',                i18nName: 'reports',                groupKey: 'moduleGroupReports' },
+  { key: 'activity',               i18nName: 'activity',               groupKey: 'moduleGroupReports' },
+  { key: 'performance-staff',      i18nName: 'performanceStaff',       groupKey: 'moduleGroupAnalytics' },
+  { key: 'performance-stores',     i18nName: 'performanceStores',      groupKey: 'moduleGroupAnalytics' },
+  { key: 'performance-operations', i18nName: 'performanceOperations',  groupKey: 'moduleGroupAnalytics' },
+  { key: 'performance-customers',  i18nName: 'performanceCustomers',   groupKey: 'moduleGroupAnalytics' },
+  { key: 'guide',                  i18nName: 'guide',                  groupKey: 'moduleGroupHelp' },
+  { key: 'announcements',          i18nName: 'announcements',          groupKey: 'moduleGroupSystem' },
+  { key: 'users',                  i18nName: 'users',                  groupKey: 'moduleGroupSystem' },
+  { key: 'settings',               i18nName: 'settings',               groupKey: 'moduleGroupSystem' },
 ];
 
 export default function TenantEditForm({
@@ -67,6 +76,7 @@ export default function TenantEditForm({
 }) {
   const router = useRouter();
   const t = useTranslations('platformAdmin');
+  const tModules = useTranslations('modules');
   const [tab, setTab] = useState<'plan' | 'line' | 'branding' | 'modules' | 'danger'>('plan');
   const [saving, setSaving] = useState(false);
   const [verifyResult, setVerifyResult] = useState<string | null>(null);
@@ -185,9 +195,28 @@ export default function TenantEditForm({
   }
 
   const moduleGroups = MODULE_CATALOG.reduce<Record<string, ModuleEntry[]>>((acc, m) => {
-    (acc[m.group] ??= []).push(m);
+    (acc[m.groupKey] ??= []).push(m);
     return acc;
   }, {});
+
+  // Resolve a module's translated name (modules.<key>.name) with the canonical
+  // kebab-case key as a visible fallback so an unmapped entry doesn't render
+  // as a missing-translation token.
+  const moduleLabel = (m: ModuleEntry) => {
+    try {
+      return tModules(`${m.i18nName}.name` as 'overview.name');
+    } catch {
+      return m.key;
+    }
+  };
+
+  const groupLabel = (groupKey: string) => {
+    try {
+      return t(`tenantDetail.${groupKey}` as 'tenantDetail.moduleGroupCore');
+    } catch {
+      return groupKey;
+    }
+  };
 
   // Legacy plans that may still exist in DB — show alongside trial/pro so admins
   // can still read/reassign the current value, but funnel new selections into pro.
@@ -369,10 +398,10 @@ export default function TenantEditForm({
             </div>
 
             <div className="space-y-4">
-              {Object.entries(moduleGroups).map(([groupName, mods]) => (
-                <div key={groupName}>
+              {Object.entries(moduleGroups).map(([groupKey, mods]) => (
+                <div key={groupKey}>
                   <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    {groupName}
+                    {groupLabel(groupKey)}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {mods.map((m) => (
@@ -388,7 +417,7 @@ export default function TenantEditForm({
                           }
                           className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                         />
-                        <span className="flex-1">{m.label}</span>
+                        <span className="flex-1">{moduleLabel(m)}</span>
                         <code className="text-[10px] text-gray-400">{m.key}</code>
                       </label>
                     ))}
