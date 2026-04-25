@@ -192,7 +192,7 @@ CREATE TABLE stores (
   is_central           BOOLEAN DEFAULT false,
   active               BOOLEAN DEFAULT true,
   customer_theme       TEXT DEFAULT 'amber'
-                       CHECK (customer_theme IN ('amber','neon','sumi','sunset')),
+                       CHECK (customer_theme IN ('amber','neon','sumi','sunset','crimson')),
   created_at           TIMESTAMPTZ DEFAULT now(),
 
   UNIQUE (tenant_id, store_code)

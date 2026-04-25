@@ -31,6 +31,8 @@ export function ThemedSubShell(props: Props) {
       return <SumiShell {...props} />;
     case 'sunset':
       return <SunsetShell {...props} />;
+    case 'crimson':
+      return <CrimsonShell {...props} />;
     case 'amber':
     default:
       return <AmberShell {...props} />;
@@ -174,6 +176,59 @@ function SumiShell({ storeName, navQuery, children }: Props) {
           border-radius: 4px; background: #9b2c2c; color: #fbf7ef;
           font-family: 'Noto Serif JP', serif; font-size: 18px; font-weight: 600;
           box-shadow: inset 0 0 0 1.5px #fbf7ef, inset 0 0 0 2.5px #9b2c2c, 0 1px 2px rgba(120,30,30,0.3);
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/* ─────────────────────────── CRIMSON ─────────────────────────── */
+
+function CrimsonShell({ storeName, navQuery, children }: Props) {
+  return (
+    <div className="crimson-theme relative min-h-screen">
+      <div className="crimson-bg" aria-hidden />
+      <div className="crimson-paper" aria-hidden />
+      <header className="sticky top-0 z-30 border-b border-red-50/15 bg-[#5b1414]/85 backdrop-blur-md">
+        <div className="mx-auto flex max-w-md items-center gap-3 px-5 py-3">
+          <TenantLink href={`/customer${navQuery}`} className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="crimson-stamp"><span className="crimson-script">v</span></div>
+            <div className="min-w-0 leading-tight">
+              <p className="crimson-display truncate text-[15px] font-bold tracking-wider text-red-50">
+                {(storeName || 'WINE BAR').toUpperCase()}
+              </p>
+              <p className="truncate text-[10.5px] uppercase tracking-[0.2em] text-red-50/55">
+                Bottle Cellar · Est.
+              </p>
+            </div>
+          </TenantLink>
+          <HeaderControls
+            iconButtonClass="customer-focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full text-red-50/75 transition-colors hover:bg-red-50/10 hover:text-red-50"
+            langLabelClass="ml-1 text-[10.5px] font-bold uppercase tracking-wide"
+          />
+        </div>
+      </header>
+      <div className="relative z-10">{children}</div>
+      <style jsx global>{`
+        .crimson-theme { background: #7a1a1a; color: #faf3e8; font-family: 'Inter', system-ui, sans-serif; }
+        .crimson-bg {
+          position: fixed; inset: 0; z-index: 0; pointer-events: none;
+          background:
+            radial-gradient(70% 50% at 90% 0%, rgba(0,0,0,0.45), transparent 60%),
+            radial-gradient(50% 40% at 0% 100%, rgba(0,0,0,0.5), transparent 60%),
+            linear-gradient(180deg, #7a1a1a 0%, #5b1414 50%, #3d0a0a 100%);
+        }
+        .crimson-paper {
+          position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.18;
+          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.92  0 0 0 0 0.85  0 0 0 0 0.74  0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+        }
+        .crimson-display { font-family: 'Fraunces', 'Cormorant Garamond', 'Playfair Display', Georgia, serif; letter-spacing: -0.01em; }
+        .crimson-script { font-family: 'Caveat', 'Reenie Beanie', 'Indie Flower', cursive; letter-spacing: 0.02em; }
+        .crimson-stamp {
+          display: flex; height: 38px; width: 38px; align-items: center; justify-content: center;
+          border-radius: 999px; background: #faf3e8; color: #7a1a1a;
+          font-size: 22px; font-weight: 700;
+          box-shadow: inset 0 0 0 2px #7a1a1a, inset 0 0 0 2.5px #faf3e8;
         }
       `}</style>
     </div>

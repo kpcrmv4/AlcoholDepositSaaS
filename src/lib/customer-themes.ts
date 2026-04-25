@@ -6,7 +6,7 @@
  * customer page renderer (Phase 2 — apply per-store theme to /t/{slug}/customer).
  */
 
-export type CustomerThemeKey = 'amber' | 'neon' | 'sumi' | 'sunset';
+export type CustomerThemeKey = 'amber' | 'neon' | 'sumi' | 'sunset' | 'crimson';
 
 export interface CustomerThemeMeta {
   key: CustomerThemeKey;
@@ -63,6 +63,16 @@ export const CUSTOMER_THEMES: Record<CustomerThemeKey, CustomerThemeMeta> = {
     bgClass: 'from-orange-200 via-rose-200 to-amber-100',
     textClass: 'text-orange-950',
   },
+  crimson: {
+    key: 'crimson',
+    label: 'Crimson Wine',
+    tagline: 'Wine bar · Vintage',
+    description: 'พื้นแดงไวน์เข้ม + กระดาษครีม + ตัวอักษรวาดมือ casual สไตล์ wine bar/bistro',
+    swatch: ['#7a1a1a', '#faf3e8', '#a52a2a', '#3d0a0a'],
+    borderClass: 'border-red-900/40',
+    bgClass: 'from-[#7a1a1a] to-[#3d0a0a]',
+    textClass: 'text-red-50',
+  },
 };
 
 export const CUSTOMER_THEME_LIST: CustomerThemeMeta[] = [
@@ -70,6 +80,7 @@ export const CUSTOMER_THEME_LIST: CustomerThemeMeta[] = [
   CUSTOMER_THEMES.neon,
   CUSTOMER_THEMES.sumi,
   CUSTOMER_THEMES.sunset,
+  CUSTOMER_THEMES.crimson,
 ];
 
 export const DEFAULT_CUSTOMER_THEME: CustomerThemeKey = 'amber';
@@ -77,6 +88,10 @@ export const DEFAULT_CUSTOMER_THEME: CustomerThemeKey = 'amber';
 export function isCustomerTheme(value: unknown): value is CustomerThemeKey {
   return (
     typeof value === 'string' &&
-    (value === 'amber' || value === 'neon' || value === 'sumi' || value === 'sunset')
+    (value === 'amber' ||
+      value === 'neon' ||
+      value === 'sumi' ||
+      value === 'sunset' ||
+      value === 'crimson')
   );
 }
