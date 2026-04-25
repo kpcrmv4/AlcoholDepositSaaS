@@ -145,6 +145,27 @@ export default function TenantEditForm({
     setTimeout(() => setResetCopied(null), 1500);
   }
 
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  async function hardDeleteTenant() {
+    if (deleteConfirmText.trim() !== tenant.company_name) return;
+    setDeleting(true);
+    setMsg(null);
+    const res = await fetch(`/api/platform/tenants/${tenant.id}/hard-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: deleteConfirmText.trim() }),
+    });
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      setMsg(`❌ ${b.error || res.statusText}`);
+      setDeleting(false);
+      return;
+    }
+    router.push('/admin/tenants');
+  }
+
   async function saveModules() {
     setSaving(true);
     setMsg(null);
@@ -431,6 +452,37 @@ export default function TenantEditForm({
                   ⚠️ {t('tenantDetail.noOwnerWarning')}
                 </div>
               )}
+            </div>
+
+            <div className="space-y-2 border-t border-rose-100 pt-4 dark:border-rose-950/50">
+              <div className="rounded border border-rose-300 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950">
+                <div className="text-sm font-semibold text-rose-900 dark:text-rose-200">
+                  ⚠️ {t('tenantDetail.hardDeleteHeading')}
+                </div>
+                <p className="mt-1 text-xs text-rose-800 dark:text-rose-300">
+                  {t('tenantDetail.hardDeleteHint')}
+                </p>
+                <div className="mt-3 space-y-2">
+                  <label className="block text-xs font-medium text-rose-900 dark:text-rose-200">
+                    {t('tenantDetail.hardDeleteConfirmLabel', { company: tenant.company_name })}
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder={tenant.company_name}
+                    className="w-full rounded border border-rose-300 bg-white px-3 py-2 text-sm dark:border-rose-700 dark:bg-gray-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={hardDeleteTenant}
+                    disabled={deleting || deleteConfirmText.trim() !== tenant.company_name}
+                    className="rounded bg-rose-700 px-4 py-2 text-sm font-medium text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {deleting ? t('tenantDetail.hardDeleteSubmitting') : `🗑️ ${t('tenantDetail.hardDeleteButton')}`}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {resetResult && (

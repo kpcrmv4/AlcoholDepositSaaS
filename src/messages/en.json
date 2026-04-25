@@ -3351,6 +3351,11 @@
       "resetPasswordConfirm": "Reset owner password? The old password will stop working immediately.",
       "resetPasswordHint": "Generates a fresh temporary password for the tenant owner (for lost-password cases) — the old password is invalidated immediately.",
       "noOwnerWarning": "This tenant has no owner account linked yet.",
+      "hardDeleteHeading": "Permanently delete tenant",
+      "hardDeleteHint": "This wipes everything for this company — branches, staff, deposits/withdrawals, chat, settings — irreversibly. Linked email accounts are also removed from Supabase Auth.",
+      "hardDeleteConfirmLabel": "Type \"{company}\" to confirm",
+      "hardDeleteButton": "Permanently delete tenant",
+      "hardDeleteSubmitting": "Deleting…",
       "recentAudit": "Recent audit",
       "auditEmpty": "No audit entries yet."
     },
