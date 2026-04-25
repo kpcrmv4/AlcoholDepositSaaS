@@ -50,6 +50,8 @@ interface StoreLineConfig {
   stock_notify_group_id: string | null;
   deposit_notify_group_id: string | null;
   bar_notify_group_id: string | null;
+  /** Per-store theme key from stores.customer_theme — used by Flex builders */
+  customer_theme: import('@/lib/customer-themes').CustomerThemeKey | null;
 }
 
 interface StoreSettings {
@@ -286,8 +288,7 @@ async function getStoreLineConfig(storeId: string): Promise<StoreLineConfig | nu
     const { data: store, error: storeErr } = await supabase
       .from('stores')
       .select(
-        'tenant_id, line_token, line_channel_id, line_channel_secret, ' +
-        'stock_notify_group_id, deposit_notify_group_id, bar_notify_group_id',
+        'tenant_id, line_token, line_channel_id, line_channel_secret, stock_notify_group_id, deposit_notify_group_id, bar_notify_group_id, customer_theme',
       )
       .eq('id', storeId)
       .single();
@@ -307,6 +308,11 @@ async function getStoreLineConfig(storeId: string): Promise<StoreLineConfig | nu
       tenant?.line_mode === 'tenant' ||
       (!store.line_token && !!tenant?.line_token);
 
+    const themeFromStore = store.customer_theme as
+      | import('@/lib/customer-themes').CustomerThemeKey
+      | null
+      | undefined;
+
     const resolved: StoreLineConfig = useTenantConfig
       ? {
           line_token: (tenant as any)?.line_token ?? null,
@@ -315,6 +321,7 @@ async function getStoreLineConfig(storeId: string): Promise<StoreLineConfig | nu
           stock_notify_group_id: store.stock_notify_group_id,
           deposit_notify_group_id: store.deposit_notify_group_id,
           bar_notify_group_id: store.bar_notify_group_id,
+          customer_theme: themeFromStore ?? null,
         }
       : {
           line_token: store.line_token,
@@ -323,6 +330,7 @@ async function getStoreLineConfig(storeId: string): Promise<StoreLineConfig | nu
           stock_notify_group_id: store.stock_notify_group_id,
           deposit_notify_group_id: store.deposit_notify_group_id,
           bar_notify_group_id: store.bar_notify_group_id,
+          customer_theme: themeFromStore ?? null,
         };
 
     return resolved;
@@ -464,6 +472,7 @@ export async function notifyDepositEvent(params: NotifyDepositEventParams): Prom
         quantity: data.quantity,
         store_name: data.store_name,
         expiry_date: data.expiry_date,
+        theme: config.customer_theme,
       });
 
       await sendLinePush(lineUserId, [message as unknown as LineMessage], token);
@@ -483,6 +492,7 @@ export async function notifyDepositEvent(params: NotifyDepositEventParams): Prom
         actual_qty: data.actual_qty,
         remaining_qty: data.remaining_qty,
         store_name: data.store_name,
+        theme: config.customer_theme,
       });
 
       await sendLinePush(lineUserId, [message as unknown as LineMessage], token);

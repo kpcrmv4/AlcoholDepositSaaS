@@ -8,6 +8,7 @@ import {
   depositRequestApprovedFlex,
   depositRequestRejectedFlex,
 } from '@/lib/line/flex-templates';
+import { isCustomerTheme } from '@/lib/customer-themes';
 
 /**
  * POST /api/deposit-request/notify-customer
@@ -84,13 +85,17 @@ export async function POST(request: NextRequest) {
 
   const { data: store } = await supabase
     .from('stores')
-    .select('id, store_name, tenant_id, line_token, line_channel_id')
+    .select('id, store_name, tenant_id, line_token, line_channel_id, customer_theme')
     .eq('id', reqRow.store_id)
     .single();
 
   if (!store) {
     return NextResponse.json({ error: 'Store not found' }, { status: 404 });
   }
+
+  const storeTheme = isCustomerTheme(store.customer_theme)
+    ? store.customer_theme
+    : null;
 
   const { data: tenant } = await supabase
     .from('tenants')
@@ -128,6 +133,7 @@ export async function POST(request: NextRequest) {
           product_name: d.product_name,
           quantity: d.quantity,
           expiry_date: d.expiry_date,
+          theme: storeTheme,
         }),
       );
       // LINE accepts up to 5 messages per push call. If staff approves a
@@ -141,6 +147,7 @@ export async function POST(request: NextRequest) {
         customer_name: customerName,
         store_name: storeName,
         reason: reason || null,
+        theme: storeTheme,
       });
       await pushToCustomer(reqRow.line_user_id, [flex], lineToken);
     }
