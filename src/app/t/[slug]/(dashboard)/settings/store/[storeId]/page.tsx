@@ -112,7 +112,12 @@ export default function StoreDetailSettingsPage() {
   const params = useParams();
   const tenant = useTenant();
   const enabledModules = useEnabledModules();
-  const moduleEnabled = (key: string) => enabledModules.includes(key);
+  // useEnabledModules returns a ReadonlySet<string> | null (Set, not array).
+  // Null means "no allowlist available" — render every section so the page
+  // doesn't go blank in contexts like platform-admin impersonation that
+  // skip the dashboard provider.
+  const moduleEnabled = (key: string) =>
+    enabledModules ? enabledModules.has(key) : true;
   const isPerStoreLineMode = tenant.line_mode === 'per_store';
 
   const dayLabels: Record<string, string> = {
