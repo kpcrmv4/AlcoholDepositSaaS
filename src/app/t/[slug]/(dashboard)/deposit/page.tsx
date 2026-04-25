@@ -168,6 +168,7 @@ export default function DepositPage() {
     vipCount: 0,
     transferPendingCount: 0,
     pendingWithdrawalCount: 0,
+    pendingRequestsCount: 0,
   });
 
   // Handle action query parameter (e.g. ?action=new or ?action=withdraw)
@@ -242,6 +243,7 @@ export default function DepositPage() {
       { count: vipCount },
       { count: transferPendingCount },
       { count: pendingWithdrawalCount },
+      { count: pendingRequestsCount },
     ] = await Promise.all([
       withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('status', 'in_store')),
       withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('status', 'pending_confirm')),
@@ -249,6 +251,9 @@ export default function DepositPage() {
       withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('is_vip', true)),
       withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('status', 'transfer_pending')),
       withDateFilter(supabase.from('withdrawals').select('*', { count: 'exact', head: true }).eq('store_id', storeId).in('status', ['pending', 'approved'])),
+      // Customer LIFF deposit_requests waiting for staff approval — never date-filtered
+      // because the dashboard's date range applies to the working shift, not request age.
+      supabase.from('deposit_requests').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('status', 'pending'),
     ]);
 
     setStats({
@@ -258,6 +263,7 @@ export default function DepositPage() {
       vipCount: vipCount || 0,
       transferPendingCount: transferPendingCount || 0,
       pendingWithdrawalCount: pendingWithdrawalCount || 0,
+      pendingRequestsCount: pendingRequestsCount || 0,
     });
   }, []);
 
@@ -691,6 +697,30 @@ export default function DepositPage() {
           </Button>
         </div>
       </div>
+
+      {/* Customer LIFF deposit requests waiting for staff approval.
+          These live in `deposit_requests`, not `deposits` — so they never appear
+          in the tabs below. Surface them as a banner so staff know to triage. */}
+      {stats.pendingRequestsCount > 0 && (
+        <Link href="/deposit/requests">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 transition-colors hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-900/20 dark:hover:bg-amber-900/30">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/40">
+                <Clock className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  คำขอฝากใหม่จากลูกค้า {stats.pendingRequestsCount} รายการ
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  ลูกค้าส่งจาก LIFF — รอ Staff อนุมัติ
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+          </div>
+        </Link>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

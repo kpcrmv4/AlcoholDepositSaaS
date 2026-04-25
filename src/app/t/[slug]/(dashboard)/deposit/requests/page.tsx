@@ -177,6 +177,7 @@ export default function DepositRequestsPage() {
           body: `${selectedRequest.customer_name} ฝาก ${selectedRequest.product_name} x${selectedRequest.quantity}`,
           data: { deposit_code: depositCode },
           excludeUserId: user?.id,
+          roles: ['owner', 'manager', 'staff', 'bar'],
         });
 
         // ส่ง Action Card เข้าห้องแชทสาขา

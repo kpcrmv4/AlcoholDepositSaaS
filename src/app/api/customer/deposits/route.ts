@@ -40,19 +40,61 @@ async function getDeposits(lineUserId: string, opts: GetDepositsOptions = {}) {
     if (!resolvedStoreId) return [];
   }
 
-  let query = supabase
+  let depositsQuery = supabase
     .from('deposits')
     .select(DEPOSIT_SELECT)
     .eq('line_user_id', lineUserId)
     .in('status', ['pending_confirm', 'in_store', 'pending_withdrawal'])
     .order('created_at', { ascending: false });
 
+  // LIFF deposit-request stays in `deposit_requests` until staff approves.
+  // Surface those as virtual `pending_confirm` deposits so the customer's
+  // "รอยืนยัน" tab reflects what they just submitted.
+  let requestsQuery = supabase
+    .from('deposit_requests')
+    .select(
+      'id, store_id, product_name, quantity, customer_name, notes, status, created_at, store:stores(store_name)',
+    )
+    .eq('line_user_id', lineUserId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+
   if (resolvedStoreId) {
-    query = query.eq('store_id', resolvedStoreId);
+    depositsQuery = depositsQuery.eq('store_id', resolvedStoreId);
+    requestsQuery = requestsQuery.eq('store_id', resolvedStoreId);
   }
 
-  const { data } = await query;
-  return data || [];
+  const [{ data: deposits }, { data: requests }] = await Promise.all([
+    depositsQuery,
+    requestsQuery,
+  ]);
+
+  // Map deposit_requests into a deposit-shaped object. Use `req-<id>` as the
+  // composite id so the client can distinguish them from real deposits and
+  // never offer a withdrawal action (status !== 'in_store').
+  const virtualPending = (requests || []).map((r) => ({
+    id: `req-${r.id}`,
+    deposit_code: null,
+    product_name: r.product_name || 'รอ Staff ระบุรายการ',
+    category: null,
+    remaining_qty: r.quantity ?? 0,
+    remaining_percent: 0,
+    expiry_date: null,
+    status: 'pending_confirm' as const,
+    created_at: r.created_at,
+    store_id: r.store_id,
+    store: r.store,
+    is_request: true,
+  }));
+
+  // Sort combined list by created_at desc (deposits + virtualPending).
+  const merged = [...(deposits || []), ...virtualPending].sort((a, b) => {
+    const aT = new Date(a.created_at as string).getTime();
+    const bT = new Date(b.created_at as string).getTime();
+    return bT - aT;
+  });
+
+  return merged;
 }
 
 // Token mode

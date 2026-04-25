@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { pushToStaffGroup, createFlexMessage } from '@/lib/line/messaging';
 import { approvalRequestTemplate } from '@/lib/line/flex-templates';
 import { notifyStoreStaff } from '@/lib/notifications/service';
+import { sendBotMessage } from '@/lib/chat/bot';
 
 /**
  * POST /api/customer/deposit-request
@@ -144,7 +145,10 @@ export async function POST(request: NextRequest) {
   }
 
   // -----------------------------------------------------------------------
-  // Send web push + in-app notifications to staff/bar
+  // Send web push + in-app notifications to staff/bar/manager/owner.
+  // Default roles in notifyStoreStaff exclude 'owner' which means single-owner
+  // stores get no in-app alert at all. Pass roles explicitly so any account
+  // assigned to the store can see the request.
   // -----------------------------------------------------------------------
   try {
     await notifyStoreStaff({
@@ -153,9 +157,28 @@ export async function POST(request: NextRequest) {
       title: 'มีคำขอฝากเหล้าใหม่',
       body: `${customerName || 'ลูกค้า'}${tableNumber ? ` (โต๊ะ ${tableNumber})` : ''} ต้องการฝากเหล้า`,
       data: { requestId: insertedId },
+      roles: ['owner', 'manager', 'staff', 'bar'],
     });
   } catch (err) {
     console.error('[DepositRequest] Failed to send push notification:', err);
+  }
+
+  // -----------------------------------------------------------------------
+  // Post a system message to the store's in-app chat room so staff see the
+  // request without having to refresh. We use type='system' (not action_card)
+  // because the request lives in `deposit_requests`, not `deposits` — it has
+  // no deposit_code yet, and staff must approve it on /deposit/requests
+  // before it becomes a real deposit.
+  // -----------------------------------------------------------------------
+  try {
+    await sendBotMessage({
+      storeId,
+      type: 'system',
+      content: `📥 คำขอฝากใหม่จาก ${customerName || 'ลูกค้า'}${tableNumber ? ` (โต๊ะ ${tableNumber})` : ''} — รอ Staff อนุมัติที่หน้า "คำขอฝาก"`,
+      metadata: { request_id: insertedId, customer_phone: customerPhone || null },
+    });
+  } catch (err) {
+    console.error('[DepositRequest] Failed to post chat system message:', err);
   }
 
   return NextResponse.json({ success: true, requestId: insertedId });

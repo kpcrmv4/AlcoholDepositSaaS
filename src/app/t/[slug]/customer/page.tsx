@@ -131,7 +131,7 @@ export default function CustomerPage() {
   function mapDeposits(raw: any[]): DepositItem[] {
     return raw.map((d) => ({
       id: d.id,
-      code: d.deposit_code,
+      code: d.deposit_code || '—',
       productName: d.product_name,
       remainingPercent: d.remaining_percent ?? 0,
       remainingQty: d.remaining_qty ?? 0,

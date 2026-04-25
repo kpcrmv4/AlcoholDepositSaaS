@@ -595,6 +595,7 @@ export function DepositForm({ onBack, onSuccess }: DepositFormProps) {
           : `${customerName.trim()} ${t('form.notifyDepositBody', { items: itemsSummary })}`,
         data: { deposit_code: depositCodes[0] },
         excludeUserId: user?.id,
+        roles: ['owner', 'manager', 'staff', 'bar'],
       });
 
       // ส่ง Action Card เข้าห้องแชทสาขา (ไม่ส่งสำหรับรายการ "ไม่ฝาก")
