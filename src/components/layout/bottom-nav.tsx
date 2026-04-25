@@ -18,38 +18,40 @@ import { useNotificationStore } from '@/stores/notification-store';
 import { useChatStore } from '@/stores/chat-store';
 import { getModuleColors } from '@/lib/utils/module-colors';
 import type { LucideIcon } from 'lucide-react';
-import { useTenantPath } from '@/lib/tenant';
+import { useEnabledModules, useTenantPath } from '@/lib/tenant';
 
 interface NavItem {
   labelKey: string;
   href: string;
   icon: LucideIcon;
   color: string;
+  /** module id from src/lib/modules/registry — used for tenant allowlist */
+  moduleId: string;
 }
 
 // เมนูสำหรับ owner/manager/accountant/hq
 const desktopRoleNavItems: NavItem[] = [
-  { labelKey: 'nav.stock', href: '/stock', icon: ClipboardCheck, color: 'indigo' },
-  { labelKey: 'nav.depositWithdraw', href: '/deposit', icon: Wine, color: 'emerald' },
-  { labelKey: 'nav.overview', href: '/overview', icon: LayoutDashboard, color: 'violet' },
-  { labelKey: 'nav.chat', href: '/chat', icon: MessageSquare, color: 'blue' },
-  { labelKey: 'nav.guide', href: '/guide', icon: BookOpen, color: 'sky' },
+  { labelKey: 'nav.stock', href: '/stock', icon: ClipboardCheck, color: 'indigo', moduleId: 'stock' },
+  { labelKey: 'nav.depositWithdraw', href: '/deposit', icon: Wine, color: 'emerald', moduleId: 'deposit' },
+  { labelKey: 'nav.overview', href: '/overview', icon: LayoutDashboard, color: 'violet', moduleId: 'overview' },
+  { labelKey: 'nav.chat', href: '/chat', icon: MessageSquare, color: 'blue', moduleId: 'chat' },
+  { labelKey: 'nav.guide', href: '/guide', icon: BookOpen, color: 'sky', moduleId: 'guide' },
 ];
 
 // เมนูสำหรับ staff — ฝากเหล้า / เบิกเหล้า / แชท
 const staffNavItems: NavItem[] = [
-  { labelKey: 'nav.depositWithdraw', href: '/deposit', icon: Wine, color: 'emerald' },
-  { labelKey: 'nav.chat', href: '/chat', icon: MessageSquare, color: 'blue' },
-  { labelKey: 'nav.guide', href: '/guide', icon: BookOpen, color: 'sky' },
+  { labelKey: 'nav.depositWithdraw', href: '/deposit', icon: Wine, color: 'emerald', moduleId: 'deposit' },
+  { labelKey: 'nav.chat', href: '/chat', icon: MessageSquare, color: 'blue', moduleId: 'chat' },
+  { labelKey: 'nav.guide', href: '/guide', icon: BookOpen, color: 'sky', moduleId: 'guide' },
 ];
 
 // เมนูสำหรับ bar — นับสต๊อค ฝากเหล้า ยืม โอน แชท
 const barNavItems: NavItem[] = [
-  { labelKey: 'nav.countStock', href: '/stock', icon: ClipboardCheck, color: 'indigo' },
-  { labelKey: 'nav.depositWithdraw', href: '/deposit', icon: Wine, color: 'emerald' },
-  { labelKey: 'nav.chat', href: '/chat', icon: MessageSquare, color: 'blue' },
-  { labelKey: 'nav.borrowItem', href: '/borrow', icon: Repeat, color: 'rose' },
-  { labelKey: 'nav.transfer', href: '/transfer', icon: ArrowLeftRight, color: 'blue' },
+  { labelKey: 'nav.countStock', href: '/stock', icon: ClipboardCheck, color: 'indigo', moduleId: 'stock' },
+  { labelKey: 'nav.depositWithdraw', href: '/deposit', icon: Wine, color: 'emerald', moduleId: 'deposit' },
+  { labelKey: 'nav.chat', href: '/chat', icon: MessageSquare, color: 'blue', moduleId: 'chat' },
+  { labelKey: 'nav.borrowItem', href: '/borrow', icon: Repeat, color: 'rose', moduleId: 'borrow' },
+  { labelKey: 'nav.transfer', href: '/transfer', icon: ArrowLeftRight, color: 'blue', moduleId: 'transfer' },
 ];
 
 export function BottomNav() {
@@ -59,15 +61,21 @@ export function BottomNav() {
   const { unreadCount } = useNotificationStore();
   const chatUnread = useChatStore((s) => s.totalUnread);
   const tenantPath = useTenantPath();
+  const enabledModules = useEnabledModules();
 
   if (!user) return null;
 
   const desktopRoles = ['owner', 'accountant', 'manager', 'hq'];
-  const navItems = desktopRoles.includes(user.role)
+  const baseNavItems = desktopRoles.includes(user.role)
     ? desktopRoleNavItems
     : user.role === 'bar'
       ? barNavItems
       : staffNavItems;
+
+  // Honour the platform-controlled tenant module allowlist
+  const navItems = enabledModules
+    ? baseNavItems.filter((item) => enabledModules.has(item.moduleId))
+    : baseNavItems;
 
   const centerIndex = navItems.length === 5 ? 2 : -1;
 

@@ -31,15 +31,53 @@ interface ResetResult {
   temp_password: string;
 }
 
-export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
+interface ModuleEntry {
+  key: string;
+  label: string;
+  group: string;
+}
+
+const MODULE_CATALOG: ModuleEntry[] = [
+  { key: 'overview',                 label: 'Overview',                  group: 'หลัก' },
+  { key: 'chat',                     label: 'Chat',                      group: 'หลัก' },
+  { key: 'stock',                    label: 'Stock / Count / OCR',       group: 'คลังสินค้า' },
+  { key: 'deposit',                  label: 'Deposit / Withdrawal',      group: 'คลังสินค้า' },
+  { key: 'transfer',                 label: 'Transfer between branches', group: 'คลังสินค้า' },
+  { key: 'borrow',                   label: 'Borrow between branches',   group: 'คลังสินค้า' },
+  { key: 'hq-warehouse',             label: 'HQ Warehouse',              group: 'คลังสินค้า' },
+  { key: 'commission',               label: 'Commission / AE',           group: 'คลังสินค้า' },
+  { key: 'reports',                  label: 'Reports',                   group: 'รายงาน' },
+  { key: 'activity',                 label: 'Activity log',              group: 'รายงาน' },
+  { key: 'performance-staff',        label: 'Performance — staff',       group: 'วิเคราะห์' },
+  { key: 'performance-stores',       label: 'Performance — stores',      group: 'วิเคราะห์' },
+  { key: 'performance-operations',   label: 'Performance — operations',  group: 'วิเคราะห์' },
+  { key: 'performance-customers',    label: 'Performance — customers',   group: 'วิเคราะห์' },
+  { key: 'guide',                    label: 'Guide',                     group: 'ช่วยเหลือ' },
+  { key: 'announcements',            label: 'Announcements',             group: 'ระบบ' },
+  { key: 'users',                    label: 'Users',                     group: 'ระบบ' },
+  { key: 'settings',                 label: 'Settings (in-app)',         group: 'ระบบ' },
+];
+
+export default function TenantEditForm({
+  tenant,
+  modulesEnabled,
+}: {
+  tenant: TenantRow;
+  modulesEnabled: Record<string, boolean>;
+}) {
   const router = useRouter();
   const t = useTranslations('platformAdmin');
-  const [tab, setTab] = useState<'plan' | 'line' | 'branding' | 'danger'>('plan');
+  const [tab, setTab] = useState<'plan' | 'line' | 'branding' | 'modules' | 'danger'>('plan');
   const [saving, setSaving] = useState(false);
   const [verifyResult, setVerifyResult] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [resetResult, setResetResult] = useState<ResetResult | null>(null);
   const [resetCopied, setResetCopied] = useState<string | null>(null);
+  const [moduleState, setModuleState] = useState<Record<string, boolean>>(() => {
+    const seed: Record<string, boolean> = {};
+    for (const m of MODULE_CATALOG) seed[m.key] = modulesEnabled[m.key] ?? false;
+    return seed;
+  });
 
   async function savePatch(payload: Record<string, unknown>) {
     setSaving(true);
@@ -107,6 +145,29 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
     setTimeout(() => setResetCopied(null), 1500);
   }
 
+  async function saveModules() {
+    setSaving(true);
+    setMsg(null);
+    const res = await fetch(`/api/platform/tenants/${tenant.id}/modules`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modules: moduleState }),
+    });
+    setSaving(false);
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      setMsg(`❌ ${b.error || res.statusText}`);
+      return;
+    }
+    setMsg('✅ Modules updated');
+    router.refresh();
+  }
+
+  const moduleGroups = MODULE_CATALOG.reduce<Record<string, ModuleEntry[]>>((acc, m) => {
+    (acc[m.group] ??= []).push(m);
+    return acc;
+  }, {});
+
   // Legacy plans that may still exist in DB — show alongside trial/pro so admins
   // can still read/reassign the current value, but funnel new selections into pro.
   const LEGACY_PLANS = ['starter', 'growth', 'enterprise', 'custom'];
@@ -119,6 +180,7 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
           ['plan', t('tenantDetail.tabPlan')],
           ['line', t('tenantDetail.tabLine')],
           ['branding', t('tenantDetail.tabBranding')],
+          ['modules', 'Modules'],
           ['danger', t('tenantDetail.tabDanger')],
         ] as const).map(([k, label]) => (
           <button
@@ -253,6 +315,79 @@ export default function TenantEditForm({ tenant }: { tenant: TenantRow }) {
               </button>
             </div>
           </form>
+        )}
+
+        {tab === 'modules' && (
+          <div className="space-y-5">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              เลือกโมดูลที่บริษัทนี้ใช้งานได้. เมนูที่ปิดจะถูกซ่อนจาก sidebar
+              และ bottom-nav ของทุก role ในบริษัทนี้.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const all: Record<string, boolean> = {};
+                  for (const m of MODULE_CATALOG) all[m.key] = true;
+                  setModuleState(all);
+                }}
+                className="rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+              >
+                เปิดทั้งหมด
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const none: Record<string, boolean> = {};
+                  for (const m of MODULE_CATALOG) none[m.key] = false;
+                  setModuleState(none);
+                }}
+                className="rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+              >
+                ปิดทั้งหมด
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {Object.entries(moduleGroups).map(([groupName, mods]) => (
+                <div key={groupName}>
+                  <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {groupName}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {mods.map((m) => (
+                      <label
+                        key={m.key}
+                        className="flex cursor-pointer items-center gap-2 rounded border border-gray-200 bg-white px-3 py-2 text-sm hover:border-indigo-300 dark:border-gray-800 dark:bg-gray-900"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={moduleState[m.key] ?? false}
+                          onChange={(e) =>
+                            setModuleState((prev) => ({ ...prev, [m.key]: e.target.checked }))
+                          }
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="flex-1">{m.label}</span>
+                        <code className="text-[10px] text-gray-400">{m.key}</code>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={saveModules}
+                disabled={saving}
+                className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {saving ? 'กำลังบันทึก…' : 'บันทึก Modules'}
+              </button>
+            </div>
+          </div>
         )}
 
         {tab === 'danger' && (

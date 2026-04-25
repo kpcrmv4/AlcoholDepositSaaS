@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { createServiceClient } from '@/lib/supabase/server';
 import { resolveTenantBySlug } from '@/lib/tenant/resolve';
-import FeaturesManager from './features-manager';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,21 +9,26 @@ interface Params {
   params: Promise<{ slug: string }>;
 }
 
-// Modules the tenant can toggle per-store. Keep in sync with registry.ts.
-const FEATURE_KEYS = [
-  { key: 'stock', label: 'สต๊อก / นับของ / OCR' },
-  { key: 'deposit', label: 'ฝากเหล้า' },
-  { key: 'withdrawal', label: 'เบิกเหล้า' },
-  { key: 'transfer', label: 'โอนระหว่างสาขา' },
-  { key: 'borrow', label: 'ยืมระหว่างสาขา' },
-  { key: 'hq_warehouse', label: 'คลังกลาง (HQ)' },
-  { key: 'commission', label: 'Commission / AE' },
-  { key: 'chat', label: 'แชทภายในร้าน' },
-  { key: 'print_server', label: 'Print server (POS80)' },
-  { key: 'line_messaging', label: 'แจ้งเตือนผ่าน LINE' },
-  { key: 'announcements', label: 'ประกาศ / โปรโมชั่น' },
-  { key: 'penalties', label: 'ค่าปรับพนักงาน' },
-];
+const MODULE_LABELS: Record<string, { label: string; group: string }> = {
+  overview:                 { label: 'Overview',                  group: 'หลัก' },
+  chat:                     { label: 'Chat',                      group: 'หลัก' },
+  stock:                    { label: 'Stock / นับของ / OCR',       group: 'คลังสินค้า' },
+  deposit:                  { label: 'ฝาก / เบิกเหล้า',            group: 'คลังสินค้า' },
+  transfer:                 { label: 'โอนระหว่างสาขา',             group: 'คลังสินค้า' },
+  borrow:                   { label: 'ยืมระหว่างสาขา',             group: 'คลังสินค้า' },
+  'hq-warehouse':           { label: 'คลังกลาง (HQ)',              group: 'คลังสินค้า' },
+  commission:               { label: 'Commission / AE',           group: 'คลังสินค้า' },
+  reports:                  { label: 'รายงาน',                    group: 'รายงาน' },
+  activity:                 { label: 'Activity log',              group: 'รายงาน' },
+  'performance-staff':      { label: 'วิเคราะห์ — พนักงาน',         group: 'วิเคราะห์' },
+  'performance-stores':     { label: 'วิเคราะห์ — สาขา',           group: 'วิเคราะห์' },
+  'performance-operations': { label: 'วิเคราะห์ — operations',    group: 'วิเคราะห์' },
+  'performance-customers':  { label: 'วิเคราะห์ — ลูกค้า',          group: 'วิเคราะห์' },
+  guide:                    { label: 'คู่มือ',                    group: 'ช่วยเหลือ' },
+  announcements:            { label: 'ประกาศ',                    group: 'ระบบ' },
+  users:                    { label: 'ผู้ใช้',                     group: 'ระบบ' },
+  settings:                 { label: 'ตั้งค่าในแอป',              group: 'ระบบ' },
+};
 
 export default async function FeaturesPage({ params }: Params) {
   const { slug } = await params;
@@ -32,18 +36,22 @@ export default async function FeaturesPage({ params }: Params) {
   if (!tenant) notFound();
 
   const svc = createServiceClient();
-  const { data: stores } = await svc
-    .from('stores')
-    .select('id, store_code, store_name, active')
-    .eq('tenant_id', tenant.id)
-    .eq('active', true)
-    .order('store_code');
+  const { data: rows } = await svc
+    .from('tenant_modules')
+    .select('module_key, enabled')
+    .eq('tenant_id', tenant.id);
 
-  const storeIds = (stores ?? []).map((s) => s.id);
-  const { data: features } = await svc
-    .from('store_features')
-    .select('store_id, feature_key, enabled')
-    .in('store_id', storeIds.length > 0 ? storeIds : ['00000000-0000-0000-0000-000000000000']);
+  const status = new Map<string, boolean>();
+  for (const r of (rows ?? []) as { module_key: string; enabled: boolean }[]) {
+    status.set(r.module_key, r.enabled);
+  }
+
+  const groups = Object.entries(MODULE_LABELS).reduce<
+    Record<string, { key: string; label: string; enabled: boolean }[]>
+  >((acc, [key, meta]) => {
+    (acc[meta.group] ??= []).push({ key, label: meta.label, enabled: status.get(key) ?? false });
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-4">
@@ -52,14 +60,49 @@ export default async function FeaturesPage({ params }: Params) {
           ← Settings
         </Link>
         <span className="text-gray-400">/</span>
-        <span className="font-medium">ฟังก์ชั่น / สาขา</span>
+        <span className="font-medium">โมดูล</span>
       </div>
 
-      <p className="text-sm text-gray-600 dark:text-gray-400">
-        เปิด/ปิดโมดูลของแต่ละสาขา. หากปิดจะไม่แสดงเมนูและ API ของฟังก์ชั่นนั้น
-      </p>
+      <div className="rounded border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
+        🔒 รายการนี้ถูกกำหนดโดย <strong>ผู้ดูแลระบบ (Platform Admin)</strong> ตามแพ็กเกจของบริษัท.
+        หากต้องการเปิด/ปิดโมดูล กรุณาติดต่อผู้ดูแลระบบ. การเปิด/ปิดให้แต่ละ role
+        เห็นเมนูใดบ้าง ตั้งค่าได้ที่{' '}
+        <Link href={`/t/${slug}/settings/permissions`} className="underline">
+          สิทธิ์ตาม role
+        </Link>.
+      </div>
 
-      <FeaturesManager stores={stores ?? []} features={features ?? []} featureKeys={FEATURE_KEYS} />
+      <div className="space-y-4">
+        {Object.entries(groups).map(([groupName, items]) => (
+          <section
+            key={groupName}
+            className="rounded border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
+          >
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              {groupName}
+            </div>
+            <ul className="grid grid-cols-2 gap-2">
+              {items.map((m) => (
+                <li
+                  key={m.key}
+                  className="flex items-center justify-between rounded border border-gray-100 bg-gray-50 px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-950"
+                >
+                  <span>{m.label}</span>
+                  {m.enabled ? (
+                    <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                      เปิด
+                    </span>
+                  ) : (
+                    <span className="rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                      ปิด
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

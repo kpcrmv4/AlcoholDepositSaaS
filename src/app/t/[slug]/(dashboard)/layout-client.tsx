@@ -13,6 +13,7 @@ import { DesktopLayout } from '@/components/layout/desktop-layout';
 import { MobileLayout } from '@/components/layout/mobile-layout';
 import { InstallPrompt } from '@/components/pwa/install-prompt';
 import { Store, ArrowRight } from 'lucide-react';
+import { EnabledModulesProvider } from '@/lib/tenant';
 import type { AuthUser } from '@/lib/auth/permissions';
 import type { Store as StoreType } from '@/types/database';
 
@@ -30,6 +31,7 @@ interface DashboardLayoutClientProps {
   user: AuthUser;
   stores: StoreType[];
   useDesktop: boolean;
+  enabledModules: readonly string[];
 }
 
 /** หน้าที่ใช้ได้แม้ยังไม่มีสาขา */
@@ -40,6 +42,7 @@ export function DashboardLayoutClient({
   user,
   stores,
   useDesktop,
+  enabledModules,
 }: DashboardLayoutClientProps) {
   const { setUser } = useAuthStore();
   const isLargeScreen = useMediaQuery('(min-width: 1024px)');
@@ -87,14 +90,16 @@ export function DashboardLayoutClient({
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ChatBadgeProvider />
-      <InstallPrompt />
-      {showDesktop ? (
-        <DesktopLayout stores={stores}>{content}</DesktopLayout>
-      ) : (
-        <MobileLayout stores={stores}>{content}</MobileLayout>
-      )}
-    </QueryClientProvider>
+    <EnabledModulesProvider enabledModules={enabledModules}>
+      <QueryClientProvider client={queryClient}>
+        <ChatBadgeProvider />
+        <InstallPrompt />
+        {showDesktop ? (
+          <DesktopLayout stores={stores}>{content}</DesktopLayout>
+        ) : (
+          <MobileLayout stores={stores}>{content}</MobileLayout>
+        )}
+      </QueryClientProvider>
+    </EnabledModulesProvider>
   );
 }

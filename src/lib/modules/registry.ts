@@ -231,17 +231,29 @@ export function getModulesForRole(role: UserRole): ModuleConfig[] {
 
 /**
  * คืนโมดูลทั้งหมดที่ผู้ใช้คนนี้เข้าถึงได้ โดยรวม:
- * 1. Role-based access: ถ้า user.role อยู่ใน module.roles
- * 2. Individual permission override: ถ้า module.permission ถูกประกาศไว้
+ * 1. Tenant allowlist (set by platform admin) — ถ้า `enabledModuleIds`
+ *    ส่งมา จะเหลือเฉพาะโมดูลที่ tenant เปิดใช้
+ * 2. Role-based access: ถ้า user.role อยู่ใน module.roles
+ * 3. Individual permission override: ถ้า module.permission ถูกประกาศไว้
  *    และผู้ใช้ได้รับ permission นั้นแบบรายบุคคล (user.permissions)
  *
- * Owner (role มี '*' wildcard) เห็นทุกโมดูลอยู่แล้วผ่าน role check
+ * เมื่อไม่ส่ง `enabledModuleIds` (เช่น code path เก่า / test) จะข้าม
+ * tenant filter — fall back เป็นพฤติกรรมเดิม
  */
-export function getAccessibleModules(user: AuthUser): ModuleConfig[] {
+export function getAccessibleModules(
+  user: AuthUser,
+  enabledModuleIds?: ReadonlySet<string> | readonly string[] | null,
+): ModuleConfig[] {
+  const allow =
+    enabledModuleIds == null
+      ? null
+      : enabledModuleIds instanceof Set
+        ? enabledModuleIds
+        : new Set(enabledModuleIds);
+
   return modules.filter((m) => {
-    // 1) role-based access — พฤติกรรมเดิม
+    if (allow && !allow.has(m.id)) return false;
     if (m.roles.includes(user.role)) return true;
-    // 2) individual permission unlock — ต้องประกาศ permission ไว้
     if (m.permission && user.permissions.includes(m.permission)) return true;
     return false;
   });

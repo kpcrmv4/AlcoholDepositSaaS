@@ -281,6 +281,31 @@ COMMENT ON TABLE role_permissions IS
   'Tenant-level override of role → permission mapping. Owner can toggle which menus/actions each role can access.';
 
 -- ==========================================
+-- TENANT MODULES — platform-controlled module allowlist per tenant
+-- ==========================================
+-- Super admin decides which product modules a tenant is permitted to use
+-- (e.g. include 'commission' for plan = 'pro', omit 'hq_warehouse' for
+-- single-branch tenants). Sidebar / bottom-nav read this list and only
+-- show modules that are present AND enabled. Module keys mirror the
+-- frontend module registry (src/lib/modules/registry.ts):
+--   overview, chat, stock, deposit, transfer, borrow, hq-warehouse,
+--   commission, reports, activity, performance-staff, performance-stores,
+--   performance-operations, performance-customers, guide, announcements,
+--   users, settings
+
+CREATE TABLE tenant_modules (
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  module_key  TEXT NOT NULL,
+  enabled     BOOLEAN NOT NULL DEFAULT true,
+  updated_at  TIMESTAMPTZ DEFAULT now(),
+  updated_by  UUID REFERENCES platform_admins(id),
+  PRIMARY KEY (tenant_id, module_key)
+);
+
+COMMENT ON TABLE tenant_modules IS
+  'Platform-controlled module allowlist per tenant. Managed by super admin only.';
+
+-- ==========================================
 -- STOCK MODULE
 -- ==========================================
 
@@ -912,6 +937,7 @@ CREATE INDEX idx_user_permissions_granted_by ON user_permissions(granted_by);
 -- --- Feature + role config ---
 CREATE INDEX idx_store_features_store ON store_features(store_id);
 CREATE INDEX idx_role_permissions_tenant_role ON role_permissions(tenant_id, role);
+CREATE INDEX idx_tenant_modules_tenant ON tenant_modules(tenant_id);
 
 -- --- Stock module ---
 CREATE INDEX idx_products_tenant ON products(tenant_id);
@@ -1568,6 +1594,7 @@ ALTER TABLE tenant_invitations   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tenant_audit_logs    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE store_features       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE role_permissions     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_modules       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE manual_counts        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ocr_logs             ENABLE ROW LEVEL SECURITY;
@@ -1705,6 +1732,14 @@ CREATE POLICY "Tenant members see role permissions" ON role_permissions
 CREATE POLICY "Tenant owner manages role permissions" ON role_permissions
   FOR ALL USING (tenant_id = get_user_tenant_id() AND get_user_role() = 'owner')
   WITH CHECK (tenant_id = get_user_tenant_id());
+
+-- ========== tenant_modules ==========
+-- Read: tenant members see their tenant's allowlist (so the UI can hide
+-- disabled menu items). Write: platform admin only.
+CREATE POLICY "Tenant members see tenant modules" ON tenant_modules
+  FOR SELECT USING (tenant_id = get_user_tenant_id() OR is_platform_admin());
+CREATE POLICY "Platform admin manages tenant modules" ON tenant_modules
+  FOR ALL USING (is_platform_admin()) WITH CHECK (is_platform_admin());
 
 -- ========== products ==========
 CREATE POLICY "Tenant staff see products" ON products
@@ -2253,11 +2288,39 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SET search_path = public;
 
--- Auto-seed on tenant creation
+-- ==========================================
+-- SEED: default tenant_modules per tenant
+-- ==========================================
+-- Enable every product module by default. Platform admin can disable
+-- individual modules per tenant from /admin/tenants/{id} → Modules tab.
+
+CREATE OR REPLACE FUNCTION seed_tenant_modules_for_tenant(p_tenant_id UUID)
+RETURNS void AS $$
+DECLARE
+  v_keys TEXT[] := ARRAY[
+    'overview', 'chat',
+    'stock', 'deposit', 'transfer', 'borrow', 'hq-warehouse', 'commission',
+    'reports', 'activity',
+    'performance-staff', 'performance-stores', 'performance-operations', 'performance-customers',
+    'guide',
+    'announcements', 'users', 'settings'
+  ];
+  v_key TEXT;
+BEGIN
+  FOREACH v_key IN ARRAY v_keys LOOP
+    INSERT INTO public.tenant_modules (tenant_id, module_key, enabled)
+    VALUES (p_tenant_id, v_key, true)
+    ON CONFLICT (tenant_id, module_key) DO NOTHING;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+-- Auto-seed on tenant creation (role permissions + module allowlist)
 CREATE OR REPLACE FUNCTION trigger_seed_role_permissions()
 RETURNS TRIGGER AS $$
 BEGIN
   PERFORM public.seed_role_permissions_for_tenant(NEW.id);
+  PERFORM public.seed_tenant_modules_for_tenant(NEW.id);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -2350,11 +2413,12 @@ CREATE TRIGGER on_auth_user_created_super_admin
 SELECT bootstrap_super_admin_by_email('kpcrmv4@gmail.com');
 
 -- ==========================================
--- SEED: default tenant role_permissions
+-- SEED: default tenant role_permissions + modules
 -- Trigger above fires on INSERT; call explicitly for default tenant
 -- in case the trigger does not fire on conflict.
 -- ==========================================
 SELECT seed_role_permissions_for_tenant('00000000-0000-0000-0000-000000000001');
+SELECT seed_tenant_modules_for_tenant('00000000-0000-0000-0000-000000000001');
 
 -- ==========================================
 -- END OF SCHEMA (Phases A–G complete)

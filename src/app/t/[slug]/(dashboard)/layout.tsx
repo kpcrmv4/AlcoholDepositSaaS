@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { isDesktopRole } from '@/lib/auth/permissions';
 import type { UserRole } from '@/types/roles';
 import type { Store, UserPermission } from '@/types/database';
@@ -71,6 +71,19 @@ export default async function DashboardLayout({
     (p: Pick<UserPermission, 'permission'>) => p.permission as Permission
   );
 
+  // Tenant module allowlist (set by platform admin). Use the service client
+  // because RLS hides rows from non-members; tenant_id comes from `profile`
+  // which we already authenticated above.
+  const svc = createServiceClient();
+  const { data: moduleRows } = await svc
+    .from('tenant_modules')
+    .select('module_key')
+    .eq('tenant_id', profile.tenant_id)
+    .eq('enabled', true);
+  const enabledModules = (moduleRows ?? []).map(
+    (r: { module_key: string }) => r.module_key,
+  );
+
   // สร้าง AuthUser object สำหรับส่งไป client
   const serializedUser = {
     id: authUser.id,
@@ -90,6 +103,7 @@ export default async function DashboardLayout({
       user={serializedUser}
       stores={stores}
       useDesktop={useDesktop}
+      enabledModules={enabledModules}
     >
       {children}
     </DashboardLayoutClient>

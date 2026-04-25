@@ -32,7 +32,7 @@ import { getModuleColors } from '@/lib/utils/module-colors';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAppStore } from '@/stores/app-store';
 import { getAccessibleModules } from '@/lib/modules/registry';
-import { useTenantPath } from '@/lib/tenant';
+import { useEnabledModules, useTenantPath } from '@/lib/tenant';
 import { TopBar } from './top-bar';
 import { BottomNav } from './bottom-nav';
 import { StoreSwitcher } from './store-switcher';
@@ -75,12 +75,13 @@ export function MobileLayout({ children, stores }: MobileLayoutProps) {
   const { user, logout } = useAuthStore();
   const { theme, toggleTheme } = useAppStore();
   const tenantPath = useTenantPath();
+  const enabledModules = useEnabledModules();
 
-  // เห็นโมดูลตาม role + permission ส่วนตัวที่ได้รับเพิ่ม
+  // เห็นโมดูลตาม tenant allowlist + role + permission ส่วนตัว
   const modules = useMemo(
-    () => (user ? getAccessibleModules(user) : []),
+    () => (user ? getAccessibleModules(user, enabledModules) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user?.role, user?.permissions?.join(',')]
+    [user?.role, user?.permissions?.join(','), enabledModules]
   );
 
   const groupedModules = useMemo(() => {
