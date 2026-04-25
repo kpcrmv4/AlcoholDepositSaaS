@@ -1,128 +1,129 @@
 'use client';
 
-import { Suspense } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { TenantLink as Link } from '@/lib/tenant/link';
-import { useTranslations } from 'next-intl';
-import {
-  Wine,
-  Plus,
-  ArrowUpFromLine,
-  History,
-  Settings,
-  Loader2,
-} from 'lucide-react';
-import { cn } from '@/lib/utils/cn';
+import { useLocale } from 'next-intl';
+import { Wine, Loader2, Megaphone, Languages, Sun, Moon } from 'lucide-react';
+import { useAppStore } from '@/stores/app-store';
+import type { Locale } from '@/i18n/config';
 import {
   CustomerProvider,
   useCustomerAuth,
 } from './_components/customer-provider';
-import type { LucideIcon } from 'lucide-react';
 import './customer-theme.css';
 
-interface CustomerNavItem {
-  labelKey: string;
-  href: string;
-  icon: LucideIcon;
-}
-
-const customerNavItems: CustomerNavItem[] = [
-  { labelKey: 'myDeposits', href: '/customer', icon: Wine },
-  { labelKey: 'deposit', href: '/customer/deposit', icon: Plus },
-  { labelKey: 'withdraw', href: '/customer/withdraw', icon: ArrowUpFromLine },
-  { labelKey: 'history', href: '/customer/history', icon: History },
-  { labelKey: 'settings', href: '/customer/settings', icon: Settings },
-];
-
 // ---------------------------------------------------------------------------
-// Header — glass-morphism with brand logo + store subtitle
+// Header — brand on the left, controls on the right
 // ---------------------------------------------------------------------------
 function CustomerHeader() {
   const { store } = useCustomerAuth();
-  const title = 'Bottle Keeper';
-  const subtitle = store.name || 'Stock Manager';
+  const searchParams = useSearchParams();
+  const locale = useLocale();
+  const router = useRouter();
+  const { theme, toggleTheme, setLocale } = useAppStore();
+
+  const token = searchParams.get('token');
+  const storeCode = searchParams.get('store');
+  const queryParts: string[] = [];
+  if (token) queryParts.push(`token=${encodeURIComponent(token)}`);
+  if (storeCode) queryParts.push(`store=${encodeURIComponent(storeCode)}`);
+  const navQuery = queryParts.length ? `?${queryParts.join('&')}` : '';
+
+  const switchLocale = () => {
+    const next: Locale = locale === 'th' ? 'en' : 'th';
+    document.cookie = `NEXT_LOCALE=${next};path=/;max-age=31536000;SameSite=Lax`;
+    setLocale(next);
+    router.refresh();
+  };
 
   return (
-    <header className="customer-header-bg sticky top-0 z-40">
-      <div className="flex items-center gap-2.5 px-4 py-3">
-        <div className="customer-logo-box">
-          <Wine className="h-4 w-4" />
-        </div>
-        <div className="flex flex-col leading-tight min-w-0">
-          <h1 className="customer-brand-title truncate">{title}</h1>
-          <span className="customer-brand-subtitle truncate">{subtitle}</span>
+    <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-md dark:border-slate-800/70 dark:bg-slate-950/80">
+      <div className="flex items-center gap-2 px-4 py-2.5">
+        {/* Brand */}
+        <Link
+          href={`/customer${navQuery}`}
+          className="flex min-w-0 flex-1 items-center gap-2.5"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-sm shadow-indigo-500/30">
+            <Wine className="h-4 w-4" />
+          </div>
+          <div className="flex min-w-0 flex-col leading-tight">
+            <h1 className="truncate text-sm font-bold text-slate-900 dark:text-slate-50">
+              Bottle Keeper
+            </h1>
+            <span className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+              {store.name || 'Customer Portal'}
+            </span>
+          </div>
+        </Link>
+
+        {/* Controls */}
+        <div className="flex shrink-0 items-center gap-1">
+          <Link
+            href={`/customer/promotions${navQuery}`}
+            className="customer-focus-ring flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+            aria-label="Promotions"
+          >
+            <Megaphone className="h-[18px] w-[18px]" />
+          </Link>
+
+          <button
+            type="button"
+            onClick={switchLocale}
+            className="customer-focus-ring flex h-9 items-center gap-1 rounded-full px-2.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+            aria-label="Switch language"
+          >
+            <Languages className="h-[18px] w-[18px]" />
+            <span className="text-[11px] font-bold uppercase">
+              {locale === 'th' ? 'EN' : 'TH'}
+            </span>
+          </button>
+
+          <ThemeToggleButton theme={theme} onToggle={toggleTheme} />
         </div>
       </div>
     </header>
   );
 }
 
+function ThemeToggleButton({
+  theme,
+  onToggle,
+}: {
+  theme: 'light' | 'dark';
+  onToggle: () => void;
+}) {
+  // Avoid hydration mismatch — render an icon placeholder until mounted
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="customer-focus-ring flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+      aria-label="Toggle theme"
+    >
+      {mounted ? (
+        theme === 'dark' ? (
+          <Sun className="h-[18px] w-[18px]" />
+        ) : (
+          <Moon className="h-[18px] w-[18px]" />
+        )
+      ) : (
+        <Sun className="h-[18px] w-[18px] opacity-0" />
+      )}
+    </button>
+  );
+}
+
 function CustomerLayoutInner({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const t = useTranslations('customer.nav');
-
-  // pathname is tenant-scoped (e.g. /t/somchai/customer/deposit) — strip
-  // the /t/{slug} prefix so the comparison against item.href works.
-  const logicalPath = pathname.replace(/^\/t\/[^/]+/, '') || '/';
-
-  // Preserve both ?token= and ?store= across nav so context doesn't get lost
-  const token = searchParams.get('token');
-  const storeCode = searchParams.get('store');
-
-  const queryParts: string[] = [];
-  if (token) queryParts.push(`token=${encodeURIComponent(token)}`);
-  if (storeCode) queryParts.push(`store=${encodeURIComponent(storeCode)}`);
-  const navQuery = queryParts.length ? `?${queryParts.join('&')}` : '';
-
   return (
     <CustomerProvider>
       <div className="customer-theme relative flex min-h-screen flex-col">
-        {/* Ambient background orbs */}
-        <div className="customer-ambient-bg" aria-hidden="true">
-          <div className="customer-ambient-orb orb-1" />
-          <div className="customer-ambient-orb orb-2" />
-          <div className="customer-ambient-orb orb-3" />
-        </div>
-
-        {/* Top header */}
         <CustomerHeader />
-
-        {/* Main content */}
-        <main className="customer-scroll relative z-[5] flex-1 overflow-y-auto pb-[72px]">
-          {children}
-        </main>
-
-        {/* Bottom navigation — glass dark theme */}
-        <nav className="customer-bottom-nav fixed inset-x-0 bottom-0 z-50 safe-area-inset-bottom">
-          <ul className="flex items-center justify-around">
-            {customerNavItems.map((item) => {
-              const isActive =
-                item.href === '/customer'
-                  ? logicalPath === '/customer'
-                  : logicalPath === item.href ||
-                    logicalPath.startsWith(item.href + '/');
-              const Icon = item.icon;
-
-              return (
-                <li key={item.href} className="flex-1">
-                  <Link
-                    href={`${item.href}${navQuery}`}
-                    className={cn(
-                      'customer-bottom-nav-item flex min-h-[44px] flex-col items-center justify-center gap-0.5 px-1 py-1.5',
-                      isActive && 'active',
-                    )}
-                  >
-                    <Icon className="h-[18px] w-[18px]" />
-                    <span className="text-[9px] font-semibold uppercase tracking-wide leading-tight">
-                      {t(item.labelKey)}
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
+        <main className="relative z-[5] flex-1">{children}</main>
       </div>
     </CustomerProvider>
   );
@@ -137,7 +138,7 @@ export default function CustomerLayout({
     <Suspense
       fallback={
         <div className="customer-theme flex min-h-screen items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-[#F8D794]" />
+          <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
         </div>
       }
     >

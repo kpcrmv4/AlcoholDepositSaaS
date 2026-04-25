@@ -144,7 +144,7 @@ function WithdrawContent() {
   if (isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#06C755]" />
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
       </div>
     );
   }
@@ -152,14 +152,14 @@ function WithdrawContent() {
   if (success) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-          <Package className="h-8 w-8 text-[#06C755]" />
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-emerald-950/40">
+          <Package className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
         </div>
-        <h2 className="text-lg font-bold text-gray-900">{t('successTitle')}</h2>
-        <p className="text-sm text-gray-500">{t('successSubtitle')}</p>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">{t('successTitle')}</h2>
+        <p className="text-sm text-gray-500 dark:text-slate-400">{t('successSubtitle')}</p>
         <button
           onClick={() => router.push('/customer')}
-          className="mt-2 rounded-full bg-[#06C755] px-8 py-2.5 text-sm font-semibold text-white active:bg-[#05a849]"
+          className="mt-2 rounded-full bg-indigo-600 px-8 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
         >
           {t('goHome')}
         </button>
@@ -169,12 +169,12 @@ function WithdrawContent() {
 
   if (!deposit) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-6 text-gray-400">
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-6 text-gray-400 dark:text-slate-500">
         <Package className="h-12 w-12" />
         <p className="text-sm">{t('notFound')}</p>
         <button
           onClick={() => router.push('/customer')}
-          className="rounded-full border border-gray-300 px-6 py-2 text-sm font-medium text-gray-600"
+          className="rounded-full border border-gray-300 dark:border-slate-700 px-6 py-2 text-sm font-medium text-gray-600 dark:text-slate-300"
         >
           {t('goHome')}
         </button>
@@ -187,26 +187,26 @@ function WithdrawContent() {
       {/* Back */}
       <button
         onClick={() => router.back()}
-        className="mb-4 flex items-center gap-1 text-sm text-gray-500"
+        className="mb-4 flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400"
       >
         <ArrowLeft className="h-4 w-4" />
         {t('back')}
       </button>
 
-      <h2 className="text-lg font-bold text-gray-900">{t('title')}</h2>
-      <p className="mt-0.5 text-sm text-gray-500">{deposit.deposit_code}</p>
+      <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">{t('title')}</h2>
+      <p className="mt-0.5 text-sm text-gray-500 dark:text-slate-400">{deposit.deposit_code}</p>
 
       {/* Deposit Info */}
       <div className="mt-4 rounded-2xl bg-green-50 p-4">
-        <p className="font-semibold text-gray-900">{deposit.product_name}</p>
-        <p className="mt-1 text-sm text-gray-600">
+        <p className="font-semibold text-gray-900 dark:text-slate-100">{deposit.product_name}</p>
+        <p className="mt-1 text-sm text-gray-600 dark:text-slate-300">
           {t('remaining', { qty: formatNumber(deposit.remaining_qty), store: deposit.store?.store_name || '' })}
         </p>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-600">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
@@ -214,7 +214,7 @@ function WithdrawContent() {
 
       {/* Blocked day warning */}
       {blockedInfo?.blocked && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/40 p-4">
           <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
             <div>
@@ -233,7 +233,7 @@ function WithdrawContent() {
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         {/* Withdrawal type selector */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">{t('withdrawalType')}</label>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">{t('withdrawalType')}</label>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -242,8 +242,8 @@ function WithdrawContent() {
               className={cn(
                 'flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-medium transition-colors',
                 withdrawalType === 'in_store'
-                  ? 'border-[#06C755] bg-green-50 text-[#06C755]'
-                  : 'border-gray-200 text-gray-500',
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'
+                  : 'border-gray-200 dark:border-slate-800 text-gray-500 dark:text-slate-400',
                 blockedInfo?.blocked && 'cursor-not-allowed opacity-40',
               )}
             >
@@ -256,8 +256,8 @@ function WithdrawContent() {
               className={cn(
                 'flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-medium transition-colors',
                 withdrawalType === 'take_home'
-                  ? 'border-[#06C755] bg-green-50 text-[#06C755]'
-                  : 'border-gray-200 text-gray-500',
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'
+                  : 'border-gray-200 dark:border-slate-800 text-gray-500 dark:text-slate-400',
               )}
             >
               <Home className="h-4 w-4" />
@@ -267,44 +267,44 @@ function WithdrawContent() {
         </div>
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">{t('quantity')}</label>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">{t('quantity')}</label>
           <input
             type="number"
             value={requestedQty}
             onChange={(e) => setRequestedQty(e.target.value)}
             placeholder="0"
             required
-            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#06C755] focus:ring-2 focus:ring-[#06C755]/20"
+            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           />
-          <p className="mt-1 text-xs text-gray-400">{t('maxQty', { qty: formatNumber(deposit.remaining_qty) })}</p>
+          <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{t('maxQty', { qty: formatNumber(deposit.remaining_qty) })}</p>
         </div>
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">{t('tableNumber')}</label>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">{t('tableNumber')}</label>
           <input
             type="text"
             value={tableNumber}
             onChange={(e) => setTableNumber(e.target.value)}
             placeholder={t('tablePlaceholder')}
-            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#06C755] focus:ring-2 focus:ring-[#06C755]/20"
+            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">{t('notes')}</label>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">{t('notes')}</label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder={t('notesPlaceholder')}
             rows={3}
-            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#06C755] focus:ring-2 focus:ring-[#06C755]/20"
+            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
 
         <button
           type="submit"
           disabled={isSubmitting || !requestedQty}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-[#06C755] py-3 text-sm font-semibold text-white disabled:opacity-60 active:bg-[#05a849]"
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-60 hover:bg-indigo-700"
         >
           {isSubmitting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -323,7 +323,7 @@ export default function CustomerWithdrawPage() {
     <Suspense
       fallback={
         <div className="flex min-h-[50vh] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-[#06C755]" />
+          <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
         </div>
       }
     >

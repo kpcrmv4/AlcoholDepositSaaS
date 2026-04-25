@@ -24,10 +24,10 @@ export default function CustomerHistoryPage() {
   const t = useTranslations('customer.history');
 
   const withdrawalStatusMap: Record<string, { label: string; color: string }> = {
-    pending: { label: t('statusPending'), color: 'text-amber-600 bg-amber-50' },
+    pending: { label: t('statusPending'), color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40' },
     approved: { label: t('statusApproved'), color: 'text-green-600 bg-green-50' },
     completed: { label: t('statusCompleted'), color: 'text-green-600 bg-green-50' },
-    rejected: { label: t('statusRejected'), color: 'text-red-600 bg-red-50' },
+    rejected: { label: t('statusRejected'), color: 'text-red-600 bg-red-50 dark:bg-red-950/40' },
   };
 
   useEffect(() => {
@@ -102,18 +102,18 @@ export default function CustomerHistoryPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#06C755]" />
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
       </div>
     );
   }
 
   return (
     <div className="px-4 py-4">
-      <h2 className="text-lg font-bold text-gray-900">{t('title')}</h2>
-      <p className="mt-0.5 text-sm text-gray-500">{t('subtitle')}</p>
+      <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">{t('title')}</h2>
+      <p className="mt-0.5 text-sm text-gray-500 dark:text-slate-400">{t('subtitle')}</p>
 
       {history.length === 0 ? (
-        <div className="mt-12 flex flex-col items-center gap-2 text-gray-400">
+        <div className="mt-12 flex flex-col items-center gap-2 text-gray-400 dark:text-slate-500">
           <History className="h-12 w-12" />
           <p className="text-sm">{t('noHistory')}</p>
         </div>
@@ -125,23 +125,23 @@ export default function CustomerHistoryPage() {
             return (
               <div
                 key={`${item.type}-${item.id}`}
-                className="flex items-start gap-3 rounded-2xl bg-white p-4 shadow-sm"
+                className="flex items-start gap-3 rounded-2xl bg-white dark:bg-slate-900 p-4 shadow-sm"
               >
                 <div
                   className={cn(
                     'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-                    item.type === 'deposit' ? 'bg-green-100' : 'bg-blue-100'
+                    item.type === 'deposit' ? 'bg-green-100 dark:bg-emerald-950/40' : 'bg-blue-100'
                   )}
                 >
                   {item.type === 'deposit' ? (
-                    <Wine className="h-4 w-4 text-[#06C755]" />
+                    <Wine className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                   ) : (
                     <ArrowDownCircle className="h-4 w-4 text-blue-500" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-gray-900 truncate">
+                    <p className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate">
                       {item.product_name}
                     </p>
                     {item.type === 'deposit' ? (
@@ -154,11 +154,11 @@ export default function CustomerHistoryPage() {
                       </span>
                     ) : null}
                   </div>
-                  <p className="mt-0.5 text-xs text-gray-500">
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
                     {t('quantity', { qty: formatNumber(item.quantity) })}
                     {item.deposit_code && ` | ${item.deposit_code}`}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-gray-400">
+                  <p className="mt-0.5 text-[11px] text-gray-400 dark:text-slate-500">
                     {formatThaiDateTime(item.created_at)}
                     {item.store_name && ` | ${item.store_name}`}
                   </p>

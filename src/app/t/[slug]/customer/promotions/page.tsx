@@ -25,8 +25,8 @@ export default function CustomerPromotionsPage() {
 
   const typeConfig: Record<string, { label: string; color: string }> = {
     promotion: { label: t('typePromotion'), color: 'bg-green-50 text-green-700' },
-    announcement: { label: t('typeAnnouncement'), color: 'bg-blue-50 text-blue-700' },
-    event: { label: t('typeEvent'), color: 'bg-amber-50 text-amber-700' },
+    announcement: { label: t('typeAnnouncement'), color: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700' },
+    event: { label: t('typeEvent'), color: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700' },
   };
 
   useEffect(() => {
@@ -54,18 +54,18 @@ export default function CustomerPromotionsPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#06C755]" />
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
       </div>
     );
   }
 
   return (
     <div className="px-4 py-4">
-      <h2 className="text-lg font-bold text-gray-900">{t('title')}</h2>
-      <p className="mt-0.5 text-sm text-gray-500">{t('subtitle')}</p>
+      <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">{t('title')}</h2>
+      <p className="mt-0.5 text-sm text-gray-500 dark:text-slate-400">{t('subtitle')}</p>
 
       {announcements.length === 0 ? (
-        <div className="mt-12 flex flex-col items-center gap-2 text-gray-400">
+        <div className="mt-12 flex flex-col items-center gap-2 text-gray-400 dark:text-slate-500">
           <Megaphone className="h-12 w-12" />
           <p className="text-sm">{t('noPromotions')}</p>
         </div>
@@ -75,9 +75,9 @@ export default function CustomerPromotionsPage() {
             const config = typeConfig[item.type] || typeConfig.announcement;
 
             return (
-              <div key={item.id} className="overflow-hidden rounded-2xl bg-white shadow-sm">
+              <div key={item.id} className="overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-sm">
                 {item.image_url && (
-                  <div className="aspect-[2/1] w-full overflow-hidden bg-gray-100">
+                  <div className="aspect-[2/1] w-full overflow-hidden bg-gray-100 dark:bg-slate-800">
                     <img
                       src={item.image_url}
                       alt={item.title}
@@ -87,15 +87,15 @@ export default function CustomerPromotionsPage() {
                 )}
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-gray-900">{item.title}</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-slate-100">{item.title}</h3>
                     <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium', config.color)}>
                       {config.label}
                     </span>
                   </div>
                   {item.body && (
-                    <p className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">{item.body}</p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-slate-300 whitespace-pre-wrap">{item.body}</p>
                   )}
-                  <div className="mt-3 flex items-center gap-3 text-xs text-gray-400">
+                  <div className="mt-3 flex items-center gap-3 text-xs text-gray-400 dark:text-slate-500">
                     {item.store && (
                       <span className="flex items-center gap-1">
                         <Tag className="h-3 w-3" />

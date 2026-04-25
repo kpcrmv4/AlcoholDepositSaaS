@@ -299,7 +299,17 @@
       "bottlesLabel": "จำนวนขวด",
       "pendingStaff": "รอพนักงานยืนยัน",
       "inStore": "ฝากอยู่ในร้าน",
-      "daysLeftLabel": "เหลืออีก"
+      "daysLeftLabel": "เหลืออีก",
+      "statTotal": "ฝากอยู่",
+      "statNearExpiry": "ใกล้หมดอายุ ≤{days}ว",
+      "statPending": "รอดำเนินการ",
+      "ctaDeposit": "ฝากเหล้าใหม่",
+      "viewHistory": "ดูประวัติทั้งหมด",
+      "filterAll": "ทั้งหมด",
+      "filterPending": "รอยืนยัน",
+      "filterInStore": "พร้อมใช้",
+      "filterPendingWithdraw": "รอเบิก",
+      "filterExpiring": "ใกล้หมดอายุ"
     },
     "deposit": {
       "title": "ฝากเหล้า",

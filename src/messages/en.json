@@ -299,7 +299,17 @@
       "bottlesLabel": "Bottles",
       "pendingStaff": "Waiting for staff",
       "inStore": "In store",
-      "daysLeftLabel": "Days left"
+      "daysLeftLabel": "Days left",
+      "statTotal": "Bottles",
+      "statNearExpiry": "Expiring ≤{days}d",
+      "statPending": "Pending",
+      "ctaDeposit": "New deposit",
+      "viewHistory": "View all history",
+      "filterAll": "All",
+      "filterPending": "Pending",
+      "filterInStore": "Ready",
+      "filterPendingWithdraw": "Withdrawing",
+      "filterExpiring": "Expiring"
     },
     "deposit": {
       "title": "Deposit Bottle",

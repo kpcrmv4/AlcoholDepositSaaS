@@ -250,7 +250,7 @@ function DepositContent() {
   if (authLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#06C755]" />
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
       </div>
     );
   }
@@ -260,7 +260,7 @@ function DepositContent() {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-6 text-center">
         <AlertCircle className="h-12 w-12 text-red-400" />
-        <p className="text-sm text-gray-600">{authError}</p>
+        <p className="text-sm text-gray-600 dark:text-slate-300">{authError}</p>
       </div>
     );
   }
@@ -269,16 +269,16 @@ function DepositContent() {
   if (success) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-          <CheckCircle2 className="h-8 w-8 text-[#06C755]" />
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-emerald-950/40">
+          <CheckCircle2 className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
         </div>
-        <h2 className="text-lg font-bold text-gray-900">
+        <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">
           {t('successTitle')}
         </h2>
-        <p className="text-sm text-gray-500">{t('successSubtitle')}</p>
+        <p className="text-sm text-gray-500 dark:text-slate-400">{t('successSubtitle')}</p>
         <button
           onClick={() => router.push('/customer')}
-          className="mt-2 rounded-full bg-[#06C755] px-8 py-2.5 text-sm font-semibold text-white active:bg-[#05a849]"
+          className="mt-2 rounded-full bg-indigo-600 px-8 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
         >
           {t('goHome')}
         </button>
@@ -291,20 +291,20 @@ function DepositContent() {
       {/* Back */}
       <button
         onClick={() => router.back()}
-        className="mb-4 flex items-center gap-1 text-sm text-gray-500"
+        className="mb-4 flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400"
       >
         <ArrowLeft className="h-4 w-4" />
         {t('back')}
       </button>
 
-      <h2 className="text-lg font-bold text-gray-900">{t('title')}</h2>
-      <p className="mt-0.5 text-sm text-gray-500">
+      <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">{t('title')}</h2>
+      <p className="mt-0.5 text-sm text-gray-500 dark:text-slate-400">
         {t('subtitle')}
       </p>
 
       {/* Error */}
       {error && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-600">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
@@ -314,7 +314,7 @@ function DepositContent() {
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         {/* Customer name */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
             {t('customerName')} <span className="text-red-500">*</span>
           </label>
           <input
@@ -323,13 +323,13 @@ function DepositContent() {
             onChange={(e) => setCustomerName(e.target.value)}
             placeholder={t('customerNamePlaceholder')}
             required
-            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#06C755] focus:ring-2 focus:ring-[#06C755]/20"
+            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
           />
         </div>
 
         {/* Phone */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
             {t('phone')} <span className="text-red-500">*</span>
           </label>
           <input
@@ -338,13 +338,13 @@ function DepositContent() {
             onChange={(e) => setCustomerPhone(e.target.value)}
             placeholder={t('phonePlaceholder')}
             required
-            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#06C755] focus:ring-2 focus:ring-[#06C755]/20"
+            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
           />
         </div>
 
         {/* Table number */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
             {t('tableNumber')}
           </label>
           <input
@@ -352,13 +352,13 @@ function DepositContent() {
             value={tableNumber}
             onChange={(e) => setTableNumber(e.target.value)}
             placeholder={t('tablePlaceholder')}
-            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#06C755] focus:ring-2 focus:ring-[#06C755]/20"
+            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
           />
         </div>
 
         {/* Photo upload */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
             {t('photo')}
           </label>
 
@@ -378,7 +378,7 @@ function DepositContent() {
               <img
                 src={photoPreview}
                 alt={t('photoAlt')}
-                className="h-48 w-full rounded-xl border border-gray-200 object-cover"
+                className="h-48 w-full rounded-xl border border-gray-200 dark:border-slate-800 object-cover"
               />
               {isUploading && (
                 <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40">
@@ -404,11 +404,11 @@ function DepositContent() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 py-8 text-gray-400 transition-colors active:border-[#06C755] active:text-[#06C755]"
+              className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 dark:border-slate-700 py-8 text-gray-400 dark:text-slate-500 transition-colors active:border-indigo-500 active:text-indigo-600"
             >
               <Camera className="h-8 w-8" />
               <span className="text-sm">{t('takePhoto')}</span>
-              <span className="text-xs text-gray-300">
+              <span className="text-xs text-gray-300 dark:text-slate-600">
                 {t('photoFormats')}
               </span>
             </button>
@@ -417,7 +417,7 @@ function DepositContent() {
 
         {/* Notes */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
             {t('notes')}
           </label>
           <textarea
@@ -425,7 +425,7 @@ function DepositContent() {
             onChange={(e) => setNotes(e.target.value)}
             placeholder={t('notesPlaceholder')}
             rows={3}
-            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#06C755] focus:ring-2 focus:ring-[#06C755]/20"
+            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
           />
         </div>
 
@@ -433,7 +433,7 @@ function DepositContent() {
         <button
           type="submit"
           disabled={isSubmitting || isUploading || !customerName.trim() || !customerPhone.trim()}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-[#06C755] py-3 text-sm font-semibold text-white disabled:opacity-60 active:bg-[#05a849]"
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-60 hover:bg-indigo-700"
         >
           {isSubmitting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -452,7 +452,7 @@ export default function CustomerDepositPage() {
     <Suspense
       fallback={
         <div className="flex min-h-[50vh] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-[#06C755]" />
+          <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
         </div>
       }
     >
