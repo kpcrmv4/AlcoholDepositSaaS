@@ -82,6 +82,21 @@ interface Deposit {
   created_at: string;
 }
 
+interface PendingRequest {
+  id: string;
+  store_id: string;
+  line_user_id: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  table_number: string | null;
+  customer_photo_url: string | null;
+  notes: string | null;
+  product_name: string | null;
+  quantity: number | null;
+  status: string;
+  created_at: string;
+}
+
 interface TransferBatchItem {
   id: string;
   transfer_code: string | null;
@@ -141,6 +156,12 @@ export default function DepositPage() {
   const [dateFilterEnabled, setDateFilterEnabled] = useState(true);
   const [showNewForm, setShowNewForm] = useState(false);
   const [selectedDeposit, setSelectedDeposit] = useState<Deposit | null>(null);
+  // Customer LIFF deposit_requests pending staff approval — rendered inline
+  // alongside real deposits so staff see everything in one place.
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [approvingRequest, setApprovingRequest] = useState<PendingRequest | null>(null);
+  const [rejectingRequest, setRejectingRequest] = useState<PendingRequest | null>(null);
+  const [isRejecting, setIsRejecting] = useState(false);
 
   // Batch selection for expired tab
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<string>>(new Set());
@@ -351,12 +372,21 @@ export default function DepositPage() {
     const supabase = createClient();
 
     // Load active deposits (no limit — these are the important ones)
-    const { data, error } = await supabase
-      .from('deposits')
-      .select('*')
-      .eq('store_id', currentStoreId)
-      .in('status', ACTIVE_STATUSES)
-      .order('created_at', { ascending: false });
+    // and pending deposit_requests in parallel.
+    const [{ data, error }, { data: requestData }] = await Promise.all([
+      supabase
+        .from('deposits')
+        .select('*')
+        .eq('store_id', currentStoreId)
+        .in('status', ACTIVE_STATUSES)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('deposit_requests')
+        .select('*')
+        .eq('store_id', currentStoreId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false }),
+    ]);
 
     if (error) {
       toast({ type: 'error', title: t('loadError'), message: t('loadDepositError') });
@@ -364,6 +394,7 @@ export default function DepositPage() {
     if (data) {
       setDeposits(data as Deposit[]);
     }
+    setPendingRequests((requestData as PendingRequest[] | null) || []);
 
     // Load stats in parallel (respecting date filter)
     await loadStats(supabase, currentStoreId, dateFilterEnabled, dateFrom, dateTo);
@@ -371,6 +402,43 @@ export default function DepositPage() {
     setIsLoading(false);
     setHasMore(true);
   }, [currentStoreId, loadStats]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reject a deposit_request — flips status to 'rejected', logs audit, and
+  // notifies the customer's LINE channel + the store chat room.
+  const handleRejectRequest = async () => {
+    if (!rejectingRequest || !currentStoreId || !user) return;
+    setIsRejecting(true);
+    const supabase = createClient();
+
+    const { error: updateError } = await supabase
+      .from('deposit_requests')
+      .update({ status: 'rejected' })
+      .eq('id', rejectingRequest.id);
+
+    if (updateError) {
+      toast({ type: 'error', title: t('loadError'), message: updateError.message });
+      setIsRejecting(false);
+      return;
+    }
+
+    await logAudit({
+      store_id: currentStoreId,
+      action_type: AUDIT_ACTIONS.DEPOSIT_REQUEST_REJECTED,
+      table_name: 'deposit_requests',
+      record_id: rejectingRequest.id,
+      new_value: {
+        customer_name: rejectingRequest.customer_name,
+        line_user_id: rejectingRequest.line_user_id,
+      },
+      changed_by: user.id,
+    });
+
+    toast({ type: 'success', title: 'ปฏิเสธคำขอแล้ว' });
+    setRejectingRequest(null);
+    setIsRejecting(false);
+    setPendingRequests((prev) => prev.filter((r) => r.id !== rejectingRequest.id));
+    loadDeposits();
+  };
 
   // Cancel a transfer batch (revert deposits to expired)
   const handleCancelTransferBatch = async () => {
@@ -654,11 +722,28 @@ export default function DepositPage() {
   if (showNewForm) {
     return (
       <DepositForm
-        onBack={() => setShowNewForm(false)}
+        onBack={() => {
+          setShowNewForm(false);
+          setApprovingRequest(null);
+        }}
         onSuccess={() => {
           setShowNewForm(false);
+          setApprovingRequest(null);
           loadDeposits();
         }}
+        initialValues={
+          approvingRequest
+            ? {
+                requestId: approvingRequest.id,
+                customerName: approvingRequest.customer_name || '',
+                customerPhone: approvingRequest.customer_phone,
+                tableNumber: approvingRequest.table_number,
+                notes: approvingRequest.notes,
+                customerPhotoUrl: approvingRequest.customer_photo_url,
+                lineUserId: approvingRequest.line_user_id,
+              }
+            : undefined
+        }
       />
     );
   }
@@ -698,29 +783,9 @@ export default function DepositPage() {
         </div>
       </div>
 
-      {/* Customer LIFF deposit requests waiting for staff approval.
-          These live in `deposit_requests`, not `deposits` — so they never appear
-          in the tabs below. Surface them as a banner so staff know to triage. */}
-      {stats.pendingRequestsCount > 0 && (
-        <Link href="/deposit/requests">
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 transition-colors hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-900/20 dark:hover:bg-amber-900/30">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/40">
-                <Clock className="h-5 w-5 text-amber-700 dark:text-amber-300" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                  คำขอฝากใหม่จากลูกค้า {stats.pendingRequestsCount} รายการ
-                </p>
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  ลูกค้าส่งจาก LIFF — รอ Staff อนุมัติ
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 text-amber-700 dark:text-amber-300" />
-          </div>
-        </Link>
-      )}
+      {/* Pending customer LIFF requests are rendered inline below (not as a
+          banner anymore) — the cards appear above the deposit list when on
+          the "all" or "pending_confirm" tab. */}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -1007,6 +1072,102 @@ export default function DepositPage() {
               )}
             </>
           )}
+
+          {/* Pending customer LIFF requests — render inline above the deposit
+              list. Show on the "all" and "pending_confirm" tabs since these
+              are conceptually deposits awaiting staff approval. */}
+          {pendingRequests.length > 0 &&
+            (activeTab === 'all' || activeTab === 'pending_confirm') && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold text-amber-900 dark:text-amber-200">
+                    คำขอฝากเหล้าผ่าน Line ({pendingRequests.length})
+                  </h2>
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                    รอ Staff อนุมัติ
+                  </span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {pendingRequests.map((req) => (
+                    <Card
+                      key={req.id}
+                      padding="none"
+                      className="border-amber-300 dark:border-amber-800/60"
+                    >
+                      <div className="p-4">
+                        {/* Header: customer + time */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="truncate font-semibold text-gray-900 dark:text-white">
+                              {req.customer_name || 'ลูกค้า'}
+                            </h3>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                              {req.table_number && (
+                                <span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800/50">
+                                  โต๊ะ {req.table_number}
+                                </span>
+                              )}
+                              {req.customer_phone && (
+                                <span>{req.customer_phone}</span>
+                              )}
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {formatThaiDate(req.created_at)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Customer photo */}
+                        {req.customer_photo_url && (
+                          <button
+                            type="button"
+                            onClick={() => setViewingPhoto(req.customer_photo_url!)}
+                            className="mt-3 block w-full overflow-hidden rounded-lg"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={req.customer_photo_url}
+                              alt="รูปจากลูกค้า"
+                              className="h-32 w-full object-cover"
+                            />
+                          </button>
+                        )}
+
+                        {/* Notes */}
+                        {req.notes && (
+                          <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                            {req.notes}
+                          </p>
+                        )}
+
+                        {/* Actions */}
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                          <Button
+                            className="flex-1"
+                            icon={<Plus className="h-4 w-4" />}
+                            onClick={() => {
+                              setApprovingRequest(req);
+                              setShowNewForm(true);
+                            }}
+                          >
+                            อนุมัติเข้าระบบ
+                          </Button>
+                          <Button
+                            variant="danger"
+                            className="flex-1"
+                            icon={<XCircle className="h-4 w-4" />}
+                            onClick={() => setRejectingRequest(req)}
+                          >
+                            ปฏิเสธ
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
 
           {/* Desktop Table */}
           {activeTab !== 'transfer_pending' && <div className="hidden md:block">
@@ -1422,6 +1583,44 @@ export default function DepositPage() {
             icon={<XCircle className="h-4 w-4" />}
           >
             {t('cancelBatch.confirm')}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Reject deposit_request confirm modal */}
+      <Modal
+        isOpen={!!rejectingRequest}
+        onClose={() => {
+          if (!isRejecting) setRejectingRequest(null);
+        }}
+        title="ปฏิเสธคำขอฝากเหล้า"
+        description={
+          rejectingRequest
+            ? `คำขอจาก ${rejectingRequest.customer_name || 'ลูกค้า'}${
+                rejectingRequest.table_number ? ` (โต๊ะ ${rejectingRequest.table_number})` : ''
+              }`
+            : ''
+        }
+        size="md"
+      >
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          คำขอจะถูกทำเครื่องหมายว่า "ปฏิเสธ" และลูกค้าจะไม่เห็นในรายการของตนเองอีก
+        </p>
+        <ModalFooter>
+          <Button
+            variant="outline"
+            onClick={() => setRejectingRequest(null)}
+            disabled={isRejecting}
+          >
+            ยกเลิก
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleRejectRequest}
+            isLoading={isRejecting}
+            icon={<XCircle className="h-4 w-4" />}
+          >
+            ยืนยันปฏิเสธ
           </Button>
         </ModalFooter>
       </Modal>

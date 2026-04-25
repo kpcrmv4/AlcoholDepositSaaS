@@ -37,9 +37,29 @@ import { expiryDateISO } from '@/lib/utils/date';
 import { formatThaiDate } from '@/lib/utils/format';
 import { useTranslations } from 'next-intl';
 
+/**
+ * Pre-fill values for the deposit form. Used when staff "approves" a customer
+ * LIFF deposit_request — the form opens with the customer's info already
+ * filled in, and on success the originating deposit_request row is marked
+ * `approved` instead of leaving it stale at `pending`.
+ */
+export interface DepositFormInitialValues {
+  /** deposit_requests.id — when set, the row is marked approved on save. */
+  requestId?: string;
+  customerName?: string;
+  customerPhone?: string | null;
+  tableNumber?: string | null;
+  notes?: string | null;
+  /** Photo the customer uploaded from LIFF — shown as a preview, persisted to deposits.customer_photo_url. */
+  customerPhotoUrl?: string | null;
+  /** LINE user id of the customer — persisted to deposits.line_user_id so the customer's LIFF list links the new deposit back to them. */
+  lineUserId?: string | null;
+}
+
 interface DepositFormProps {
   onBack: () => void;
   onSuccess: () => void;
+  initialValues?: DepositFormInitialValues;
 }
 
 interface ProductOption {
@@ -341,22 +361,30 @@ function ProductSearchInput({
 // Main Form
 // ---------------------------------------------------------------------------
 
-export function DepositForm({ onBack, onSuccess }: DepositFormProps) {
+export function DepositForm({ onBack, onSuccess, initialValues }: DepositFormProps) {
   const t = useTranslations('deposit');
   const categoryOptions = getCategoryOptions(t);
   const { user } = useAuthStore();
   const { currentStoreId } = useAppStore();
 
-  // ----- Shared fields -----
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [tableNumber, setTableNumber] = useState('');
+  // ----- Shared fields (pre-filled from initialValues when approving a request) -----
+  const [customerName, setCustomerName] = useState(initialValues?.customerName ?? '');
+  const [customerPhone, setCustomerPhone] = useState(initialValues?.customerPhone ?? '');
+  const [tableNumber, setTableNumber] = useState(initialValues?.tableNumber ?? '');
   const [isNoDeposit, setIsNoDeposit] = useState(false);
   const [isVip, setIsVip] = useState(false);
   const [expiryDays, setExpiryDays] = useState('30');
   const [hasLoadedExpiryDefault, setHasLoadedExpiryDefault] = useState(false);
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(initialValues?.notes ?? '');
   const [receivedPhotoUrl, setReceivedPhotoUrl] = useState<string | null>(null);
+
+  // The customer's LIFF-uploaded photo and line_user_id ride along to deposits
+  // when this form is approving a request. They never change while the form
+  // is open, so we just keep them in refs-equivalent constants.
+  const customerPhotoUrl = initialValues?.customerPhotoUrl ?? null;
+  const lineUserId = initialValues?.lineUserId ?? null;
+  const requestId = initialValues?.requestId ?? null;
+  const isApproving = !!requestId;
 
   // ----- Multi-item -----
   const [items, setItems] = useState<DepositItem[]>([{ ...EMPTY_ITEM }]);
@@ -520,6 +548,7 @@ export function DepositForm({ onBack, onSuccess }: DepositFormProps) {
           deposit_code: depositCode,
           customer_name: customerName.trim(),
           customer_phone: customerPhone.trim() || null,
+          line_user_id: lineUserId || null,
           product_name: item.productName.trim(),
           category: item.category || null,
           quantity: qty,
@@ -538,6 +567,7 @@ export function DepositForm({ onBack, onSuccess }: DepositFormProps) {
           notes: isNoDeposit
             ? (notes.trim() ? `[${t('form.noDepositTag')}] ${notes.trim()}` : t('form.noDepositDefaultNote'))
             : (notes.trim() || null),
+          customer_photo_url: customerPhotoUrl || null,
           received_photo_url: receivedPhotoUrl || null,
         });
 
@@ -568,6 +598,30 @@ export function DepositForm({ onBack, onSuccess }: DepositFormProps) {
           },
           changed_by: user?.id || null,
         });
+      }
+
+      // If we're approving an existing deposit_request, mark it approved now
+      // that all deposits inserted successfully.
+      if (isApproving && requestId) {
+        const { error: reqError } = await supabase
+          .from('deposit_requests')
+          .update({ status: 'approved' })
+          .eq('id', requestId);
+        if (reqError) {
+          console.error('[DepositForm] Failed to mark deposit_request approved:', reqError);
+        } else {
+          await logAudit({
+            store_id: currentStoreId,
+            action_type: AUDIT_ACTIONS.DEPOSIT_REQUEST_APPROVED,
+            table_name: 'deposit_requests',
+            record_id: requestId,
+            new_value: {
+              deposit_codes: depositCodes,
+              customer_name: customerName.trim(),
+            },
+            changed_by: user?.id || null,
+          });
+        }
       }
 
       const itemsSummary = items
@@ -646,13 +700,36 @@ export function DepositForm({ onBack, onSuccess }: DepositFormProps) {
             <Wine className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t("form.newDeposit")}</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {isApproving ? 'อนุมัติคำขอฝากเหล้า' : t("form.newDeposit")}
+            </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {t("form.newDepositDesc")}
+              {isApproving
+                ? 'กรอกรายการ ถ่ายรูปรับเหล้า แล้วบันทึกเข้าระบบ'
+                : t("form.newDepositDesc")}
             </p>
           </div>
         </div>
       </div>
+
+      {/* Customer's LIFF-uploaded photo (read-only preview) — only shown when
+          staff is approving a customer deposit_request. */}
+      {isApproving && customerPhotoUrl && (
+        <Card padding="none">
+          <CardHeader
+            title="รูปจากลูกค้า"
+            description="รูปที่ลูกค้าถ่ายขวดและส่งมาจาก LINE"
+          />
+          <CardContent>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={customerPhotoUrl}
+              alt="รูปจากลูกค้า"
+              className="max-h-64 w-full rounded-lg object-contain"
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Customer info */}
       <Card padding="none">
