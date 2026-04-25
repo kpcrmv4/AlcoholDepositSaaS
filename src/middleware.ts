@@ -16,6 +16,7 @@ const PUBLIC_ROUTES = [
   '/api/chat/bot-message',
   '/api/public',
   '/suspended',
+  '/preview',                      // /preview/* — design preview pages (no auth)
 ];
 
 const ADMIN_ROUTES = ['/admin', '/api/platform'];
