@@ -414,14 +414,17 @@ interface WithdrawalCompletedParams {
   actual_qty: number;
   remaining_qty: number;
   store_name: string;
+  /** Per-store theme — header + remaining-qty accent follow the brand */
+  theme?: CustomerThemeKey | null;
 }
 
 /**
  * Flex message sent to customer when withdrawal is completed.
- * Blue accent.
+ * Header takes the brand color from the store's theme.
  */
 export function withdrawalCompletedFlex(params: WithdrawalCompletedParams): FlexMessage {
-  const { product_name, actual_qty, remaining_qty, store_name } = params;
+  const { product_name, actual_qty, remaining_qty, store_name, theme } = params;
+  const palette = getThemeFlexColors(theme);
 
   return {
     type: 'flex',
@@ -429,7 +432,7 @@ export function withdrawalCompletedFlex(params: WithdrawalCompletedParams): Flex
     contents: {
       type: 'bubble',
       size: 'mega',
-      header: headerBox('เบิกเหล้าสำเร็จ', COLORS.blue),
+      header: headerBox('เบิกเหล้าสำเร็จ', palette.brand, palette.brandText),
       body: bodyBox([
         textComponent(product_name, {
           size: 'xl',
@@ -445,7 +448,7 @@ export function withdrawalCompletedFlex(params: WithdrawalCompletedParams): Flex
         separatorComponent(),
         labelValueRow('จำนวนที่เบิก', `${formatNumber(actual_qty)} ขวด`),
         labelValueRow('คงเหลือ', `${formatNumber(remaining_qty)} ขวด`, {
-          color: remaining_qty > 0 ? COLORS.green : COLORS.red,
+          color: remaining_qty > 0 ? palette.accent : COLORS.red,
         }),
       ]),
       footer: footerBox([
@@ -462,7 +465,7 @@ export function withdrawalCompletedFlex(params: WithdrawalCompletedParams): Flex
         ),
       ]),
       styles: {
-        header: { backgroundColor: COLORS.blue },
+        header: { backgroundColor: palette.brand },
         footer: { separator: true },
       },
     },
@@ -949,10 +952,13 @@ interface DepositLinkedParams {
   store_name: string;
   expiry_date: string | null;
   customer_portal_url: string;
+  /** Per-store theme for header + accent color */
+  theme?: CustomerThemeKey | null;
 }
 
 export function depositLinkedFlex(params: DepositLinkedParams): FlexMessage {
-  const { deposit_code, product_name, customer_name, remaining_qty, quantity, store_name, expiry_date, customer_portal_url } = params;
+  const { deposit_code, product_name, customer_name, remaining_qty, quantity, store_name, expiry_date, customer_portal_url, theme } = params;
+  const palette = getThemeFlexColors(theme);
 
   const bodyContents: Record<string, unknown>[] = [
     textComponent(product_name, {
@@ -967,7 +973,7 @@ export function depositLinkedFlex(params: DepositLinkedParams): FlexMessage {
       margin: 'sm',
     }),
     separatorComponent(),
-    labelValueRow('รหัสฝาก', deposit_code, { color: COLORS.green }),
+    labelValueRow('รหัสฝาก', deposit_code, { color: palette.accent }),
     labelValueRow('ชื่อลูกค้า', customer_name),
     labelValueRow('คงเหลือ', `${formatNumber(remaining_qty)} / ${formatNumber(quantity)} ขวด`),
   ];
@@ -982,7 +988,7 @@ export function depositLinkedFlex(params: DepositLinkedParams): FlexMessage {
     contents: {
       type: 'bubble',
       size: 'mega',
-      header: headerBox('ผูกรหัสฝากสำเร็จ', COLORS.green),
+      header: headerBox('ผูกรหัสฝากสำเร็จ', palette.brand, palette.brandText),
       body: bodyBox(bodyContents),
       footer: footerBox([
         {
@@ -993,7 +999,7 @@ export function depositLinkedFlex(params: DepositLinkedParams): FlexMessage {
             uri: customer_portal_url,
           },
           style: 'primary',
-          color: COLORS.blue,
+          color: palette.brand,
           height: 'sm',
         },
         textComponent('พิมพ์ "ฝากเหล้า" เพื่อดูของฝากทั้งหมด', {
@@ -1005,7 +1011,7 @@ export function depositLinkedFlex(params: DepositLinkedParams): FlexMessage {
         }),
       ]),
       styles: {
-        header: { backgroundColor: COLORS.green },
+        header: { backgroundColor: palette.brand },
         footer: { separator: true },
       },
     },
