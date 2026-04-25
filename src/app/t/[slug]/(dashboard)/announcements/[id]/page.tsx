@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { toBangkokISO } from '@/lib/utils/date';
 import { useTranslations } from 'next-intl';
+import { useTenantRouter } from '@/lib/tenant';
 
 interface StoreOption {
   id: string;

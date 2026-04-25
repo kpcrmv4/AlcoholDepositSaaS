@@ -42,6 +42,7 @@ import {
   Bot,
 } from 'lucide-react';
 import { TenantLink as Link } from '@/lib/tenant/link';
+import { useTenantRouter } from '@/lib/tenant';
 import type { ReceiptSettings, PrintServerStatus, PrintServerWorkingHours } from '@/types/database';
 
 // ---------------------------------------------------------------------------
