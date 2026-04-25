@@ -17,7 +17,6 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
-  Package,
   ShieldCheck,
   Warehouse,
   Shuffle,
@@ -35,7 +34,7 @@ import { getModuleColors } from '@/lib/utils/module-colors';
 import { useAppStore } from '@/stores/app-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { getAccessibleModules } from '@/lib/modules/registry';
-import { useEnabledModules, useTenantPath } from '@/lib/tenant';
+import { useEnabledModules, useTenantPath, useTenant } from '@/lib/tenant';
 import { StoreSwitcher } from './store-switcher';
 import { LanguageSwitcher } from './language-switcher';
 import type { Store } from '@/types/database';
@@ -75,6 +74,7 @@ export function Sidebar({ stores }: SidebarProps) {
   const { sidebarOpen, toggleSidebar, theme, toggleTheme } = useAppStore();
   const tenantPath = useTenantPath();
   const enabledModules = useEnabledModules();
+  const tenant = useTenant();
 
   // เห็นโมดูลตาม tenant allowlist + role + permission ส่วนตัว
   const modules = useMemo(
@@ -113,7 +113,7 @@ export function Sidebar({ stores }: SidebarProps) {
         collapsed ? 'w-16' : 'w-64'
       )}
     >
-      {/* โลโก้และชื่อแอป — คลิกกลับหน้า overview */}
+      {/* โลโก้บริษัท — คลิกกลับหน้า overview */}
       <Link
         href={tenantPath("/overview")}
         className={cn(
@@ -122,10 +122,24 @@ export function Sidebar({ stores }: SidebarProps) {
           collapsed ? 'justify-center' : 'gap-3'
         )}
       >
-        <Package className="h-7 w-7 shrink-0 text-blue-600 dark:text-blue-400" />
+        {tenant.logo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={tenant.logo_url}
+            alt={tenant.company_name}
+            className="h-8 w-8 shrink-0 rounded object-cover"
+          />
+        ) : (
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-sm font-semibold text-white"
+            style={{ background: tenant.brand_color || '#4f46e5' }}
+          >
+            {tenant.company_name.charAt(0).toUpperCase()}
+          </div>
+        )}
         {!collapsed && (
-          <span className="text-lg font-bold text-gray-900 dark:text-white">
-            CellarlyOS
+          <span className="truncate text-lg font-bold text-gray-900 dark:text-white">
+            {tenant.company_name}
           </span>
         )}
       </Link>

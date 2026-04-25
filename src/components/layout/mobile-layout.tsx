@@ -32,7 +32,7 @@ import { getModuleColors } from '@/lib/utils/module-colors';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAppStore } from '@/stores/app-store';
 import { getAccessibleModules } from '@/lib/modules/registry';
-import { useEnabledModules, useTenantPath } from '@/lib/tenant';
+import { useEnabledModules, useTenantPath, useTenant } from '@/lib/tenant';
 import { TopBar } from './top-bar';
 import { BottomNav } from './bottom-nav';
 import { StoreSwitcher } from './store-switcher';
@@ -76,6 +76,7 @@ export function MobileLayout({ children, stores }: MobileLayoutProps) {
   const { theme, toggleTheme } = useAppStore();
   const tenantPath = useTenantPath();
   const enabledModules = useEnabledModules();
+  const tenant = useTenant();
 
   // เห็นโมดูลตาม tenant allowlist + role + permission ส่วนตัว
   const modules = useMemo(
@@ -158,9 +159,26 @@ export function MobileLayout({ children, stores }: MobileLayoutProps) {
           <Link
             href={tenantPath('/overview')}
             onClick={() => setDrawerOpen(false)}
-            className="text-lg font-bold text-gray-900 dark:text-white"
+            className="flex min-w-0 items-center gap-2.5"
           >
-            CellarlyOS
+            {tenant.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={tenant.logo_url}
+                alt={tenant.company_name}
+                className="h-7 w-7 shrink-0 rounded object-cover"
+              />
+            ) : (
+              <div
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-xs font-semibold text-white"
+                style={{ background: tenant.brand_color || '#4f46e5' }}
+              >
+                {tenant.company_name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <span className="truncate text-lg font-bold text-gray-900 dark:text-white">
+              {tenant.company_name}
+            </span>
           </Link>
           <button
             type="button"
