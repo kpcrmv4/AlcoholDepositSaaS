@@ -174,6 +174,51 @@
   --c-danger: #be123c;
 }
 
+.crimson-theme {
+  --c-surface-bg: #faf3e8;
+  --c-surface-border: rgba(122, 26, 26, 0.18);
+  --c-surface-radius: 8px;
+  --c-surface-bg-strong: #fbf6ec;
+  --c-text-strong: #faf3e8;
+  --c-text: #fbf6ec;
+  --c-text-muted: rgba(250, 243, 232, 0.7);
+  --c-text-faint: rgba(250, 243, 232, 0.45);
+  --c-input-bg: rgba(250, 243, 232, 0.94);
+  --c-input-border: rgba(122, 26, 26, 0.25);
+  --c-input-placeholder: rgba(122, 26, 26, 0.45);
+  --c-input-focus-border: #7a1a1a;
+  --c-divider: rgba(250, 243, 232, 0.18);
+  --c-btn-primary-bg: #faf3e8;
+  --c-btn-primary-text: #7a1a1a;
+  --c-btn-primary-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  --c-btn-secondary-bg: transparent;
+  --c-btn-secondary-text: #faf3e8;
+  --c-btn-secondary-border: rgba(250, 243, 232, 0.45);
+  --c-accent: #faf3e8;
+  --c-success: #86efac;
+  --c-warn: #fde68a;
+  --c-danger: #fda4af;
+}
+
+/* When .theme-surface lives inside .crimson-theme it's a cream card on
+ * a wine background — flip text colors so they're readable against the
+ * cream surface, while everything OUTSIDE a card uses the cream-on-wine
+ * defaults from --c-text above. */
+.crimson-theme .theme-surface,
+.crimson-theme .theme-surface-strong {
+  color: #3d0a0a;
+}
+.crimson-theme .theme-surface .theme-text-strong,
+.crimson-theme .theme-surface-strong .theme-text-strong { color: #3d0a0a; }
+.crimson-theme .theme-surface .theme-text,
+.crimson-theme .theme-surface-strong .theme-text { color: #5b1414; }
+.crimson-theme .theme-surface .theme-text-muted,
+.crimson-theme .theme-surface-strong .theme-text-muted { color: rgba(91, 20, 20, 0.7); }
+.crimson-theme .theme-surface .theme-text-faint,
+.crimson-theme .theme-surface-strong .theme-text-faint { color: rgba(91, 20, 20, 0.45); }
+.crimson-theme .theme-surface .theme-text-accent,
+.crimson-theme .theme-surface-strong .theme-text-accent { color: #7a1a1a; }
+
 /* ----------------------------------------------------------------- */
 /* Utility classes — read from --c-* CSS vars set by parent theme.   */
 /* Slate fallback (no theme parent) lets utilities still render.     */
