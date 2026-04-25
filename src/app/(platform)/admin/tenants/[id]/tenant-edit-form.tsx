@@ -180,7 +180,7 @@ export default function TenantEditForm({
       setMsg(`❌ ${b.error || res.statusText}`);
       return;
     }
-    setMsg('✅ Modules updated');
+    setMsg(t('tenantDetail.modulesUpdated'));
     router.refresh();
   }
 
@@ -201,7 +201,7 @@ export default function TenantEditForm({
           ['plan', t('tenantDetail.tabPlan')],
           ['line', t('tenantDetail.tabLine')],
           ['branding', t('tenantDetail.tabBranding')],
-          ['modules', 'Modules'],
+          ['modules', t('tenantDetail.tabModules')],
           ['danger', t('tenantDetail.tabDanger')],
         ] as const).map(([k, label]) => (
           <button
@@ -341,8 +341,7 @@ export default function TenantEditForm({
         {tab === 'modules' && (
           <div className="space-y-5">
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              เลือกโมดูลที่บริษัทนี้ใช้งานได้. เมนูที่ปิดจะถูกซ่อนจาก sidebar
-              และ bottom-nav ของทุก role ในบริษัทนี้.
+              {t('tenantDetail.modulesIntro')}
             </p>
             <div className="flex flex-wrap gap-2">
               <button
@@ -354,7 +353,7 @@ export default function TenantEditForm({
                 }}
                 className="rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
               >
-                เปิดทั้งหมด
+                {t('tenantDetail.modulesEnableAll')}
               </button>
               <button
                 type="button"
@@ -365,7 +364,7 @@ export default function TenantEditForm({
                 }}
                 className="rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
               >
-                ปิดทั้งหมด
+                {t('tenantDetail.modulesDisableAll')}
               </button>
             </div>
 
@@ -405,7 +404,7 @@ export default function TenantEditForm({
                 disabled={saving}
                 className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
               >
-                {saving ? 'กำลังบันทึก…' : 'บันทึก Modules'}
+                {saving ? t('tenantDetail.modulesSaving') : t('tenantDetail.modulesSave')}
               </button>
             </div>
           </div>
