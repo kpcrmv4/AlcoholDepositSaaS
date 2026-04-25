@@ -26,12 +26,11 @@ export default async function BranchesPage({ params }: Params) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm">
-        <Link href={`/t/${slug}/settings`} className="text-gray-500 hover:underline dark:text-gray-400">
-          ← Settings
-        </Link>
-        <span className="text-gray-400">/</span>
-        <span className="font-medium">สาขา</span>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">สาขา</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          จัดการสาขาและโควต้าของบริษัท
+        </p>
       </div>
 
       <div className="flex flex-col gap-3 rounded border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">

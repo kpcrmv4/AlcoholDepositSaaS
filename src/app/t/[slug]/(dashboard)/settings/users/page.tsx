@@ -1,5 +1,4 @@
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
 import { createServiceClient } from '@/lib/supabase/server';
 import { resolveTenantBySlug } from '@/lib/tenant/resolve';
 import UsersManager from './users-manager';
@@ -37,12 +36,11 @@ export default async function UsersPage({ params }: Params) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm">
-        <Link href={`/t/${slug}/settings`} className="text-gray-500 hover:underline dark:text-gray-400">
-          ← Settings
-        </Link>
-        <span className="text-gray-400">/</span>
-        <span className="font-medium">ผู้ใช้</span>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ผู้ใช้</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          เชิญพนักงานใหม่และจัดการบัญชีในบริษัท
+        </p>
       </div>
       <UsersManager
         tenantMaxUsers={tenant.max_users}

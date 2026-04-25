@@ -1,5 +1,4 @@
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
 import { createServiceClient } from '@/lib/supabase/server';
 import { resolveTenantBySlug } from '@/lib/tenant/resolve';
 import LineForm from './line-form';
@@ -36,12 +35,11 @@ export default async function LineSettingsPage({ params }: Params) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm">
-        <Link href={`/t/${slug}/settings`} className="text-gray-500 hover:underline dark:text-gray-400">
-          ← Settings
-        </Link>
-        <span className="text-gray-400">/</span>
-        <span className="font-medium">LINE OA</span>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">LINE OA</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          เชื่อมต่อ LINE Official Account ของบริษัท
+        </p>
       </div>
 
       <div className="rounded border border-indigo-100 bg-indigo-50 p-4 text-sm dark:border-indigo-900 dark:bg-indigo-950">

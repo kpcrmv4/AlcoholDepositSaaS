@@ -55,12 +55,11 @@ export default async function FeaturesPage({ params }: Params) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm">
-        <Link href={`/t/${slug}/settings`} className="text-gray-500 hover:underline dark:text-gray-400">
-          ← Settings
-        </Link>
-        <span className="text-gray-400">/</span>
-        <span className="font-medium">โมดูล</span>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">โมดูล</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          ดูว่าบริษัทเปิดใช้โมดูลใดบ้าง (กำหนดโดย Platform Admin)
+        </p>
       </div>
 
       <div className="rounded border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
