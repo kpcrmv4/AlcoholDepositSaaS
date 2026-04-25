@@ -537,7 +537,7 @@
     "compareDesc": "Per-branch data overview",
     "compareHeatmapTitle": "All-KPI heatmap",
     "compareColBranch": "Branch",
-    "compareDeposits": "New deposits",
+    "compareDeposits": "Pending receipt",
     "compareWithdrawals": "Withdrawals",
     "compareStockChecks": "Stock checks",
     "compareCommission": "Commission",
@@ -1046,7 +1046,7 @@
     "printSentMessage": "Waiting for printer",
     "tabs": {
       "all": "All",
-      "request": "New Request",
+      "request": "Pending receipt",
       "inStore": "In Store",
       "pendingConfirm": "Pending Confirm",
       "expired": "Expired",

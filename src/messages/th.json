@@ -537,7 +537,7 @@
     "compareDesc": "ภาพรวมข้อมูลแต่ละสาขา",
     "compareHeatmapTitle": "Heatmap ภาพรวมทุก KPI",
     "compareColBranch": "สาขา",
-    "compareDeposits": "ฝากใหม่",
+    "compareDeposits": "รอรับ",
     "compareWithdrawals": "เบิก",
     "compareStockChecks": "เช็คสต๊อก",
     "compareCommission": "คอม",
@@ -1046,7 +1046,7 @@
     "printSentMessage": "รอเครื่องพิมพ์ดำเนินการ",
     "tabs": {
       "all": "ทั้งหมด",
-      "request": "คำขอใหม่",
+      "request": "รอรับ",
       "inStore": "ในร้าน",
       "pendingConfirm": "รอยืนยัน",
       "expired": "หมดอายุ",
