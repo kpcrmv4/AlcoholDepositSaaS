@@ -200,7 +200,7 @@ function WithdrawContent() {
   if (authLoading || isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
+        <Loader2 className="h-8 w-8 animate-spin theme-text-accent" />
       </div>
     );
   }
@@ -208,8 +208,8 @@ function WithdrawContent() {
   if (authError) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-6 text-center">
-        <AlertCircle className="h-12 w-12 text-red-400" />
-        <p className="text-sm text-gray-600 dark:text-slate-300">{authError}</p>
+        <AlertCircle className="h-12 w-12 theme-text-danger" />
+        <p className="text-sm theme-text">{authError}</p>
       </div>
     );
   }
@@ -217,18 +217,16 @@ function WithdrawContent() {
   if (success) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/40">
-          <Package className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+        <div className="theme-surface flex h-16 w-16 items-center justify-center rounded-full">
+          <Package className="h-8 w-8 theme-text-success" />
         </div>
-        <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">
+        <h2 className="text-lg font-bold theme-text-strong">
           {t('successTitle')}
         </h2>
-        <p className="text-sm text-gray-500 dark:text-slate-400">
-          {t('successSubtitle')}
-        </p>
+        <p className="text-sm theme-text-muted">{t('successSubtitle')}</p>
         <button
           onClick={() => router.push('/customer')}
-          className="mt-2 rounded-full bg-indigo-600 px-8 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+          className="theme-button-primary mt-2 px-8"
         >
           {t('goHome')}
         </button>
@@ -238,12 +236,12 @@ function WithdrawContent() {
 
   if (!deposit) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-6 text-gray-400 dark:text-slate-500">
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-6 theme-text-faint">
         <Package className="h-12 w-12" />
         <p className="text-sm">{t('notFound')}</p>
         <button
           onClick={() => router.push('/customer')}
-          className="rounded-full border border-gray-300 dark:border-slate-700 px-6 py-2 text-sm font-medium text-gray-600 dark:text-slate-300"
+          className="theme-button-secondary"
         >
           {t('goHome')}
         </button>
@@ -256,25 +254,21 @@ function WithdrawContent() {
       {/* Back */}
       <button
         onClick={() => router.back()}
-        className="mb-4 flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400"
+        className="mb-4 flex items-center gap-1 text-sm theme-text-muted"
       >
         <ArrowLeft className="h-4 w-4" />
         {t('back')}
       </button>
 
-      <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">
-        {t('title')}
-      </h2>
-      <p className="mt-0.5 text-sm text-gray-500 dark:text-slate-400">
-        {deposit.deposit_code}
-      </p>
+      <h2 className="text-lg font-bold theme-text-strong">{t('title')}</h2>
+      <p className="mt-0.5 text-sm theme-text-muted">{deposit.deposit_code}</p>
 
       {/* Deposit info */}
-      <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/30">
-        <p className="font-semibold text-gray-900 dark:text-slate-100">
+      <div className="theme-surface mt-4 p-4">
+        <p className="font-semibold theme-text-strong">
           {deposit.product_name}
         </p>
-        <p className="mt-1 text-sm text-gray-600 dark:text-slate-300">
+        <p className="mt-1 text-sm theme-text-muted">
           {t('remaining', {
             qty: formatNumber(deposit.remaining_qty),
             store: deposit.store_name,
@@ -284,7 +278,7 @@ function WithdrawContent() {
 
       {/* Error */}
       {error && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-300">
+        <div className="theme-surface mt-3 flex items-center gap-2 p-3 text-sm theme-text-danger">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
@@ -292,14 +286,14 @@ function WithdrawContent() {
 
       {/* Blocked day warning */}
       {blockedInfo?.blocked && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/40">
+        <div className="theme-surface mt-3 p-4">
           <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 theme-text-warn" />
             <div>
-              <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+              <p className="text-sm font-semibold theme-text-warn">
                 {t('blockedDayTitle')}
               </p>
-              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              <p className="mt-1 text-xs theme-text-muted">
                 {t('blockedDaySubtitle')}
               </p>
             </div>
@@ -311,7 +305,7 @@ function WithdrawContent() {
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         {/* Withdrawal type */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
+          <label className="mb-1.5 block text-sm font-medium theme-text">
             {t('withdrawalType')}
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -320,12 +314,17 @@ function WithdrawContent() {
               onClick={() => !blockedInfo?.blocked && setWithdrawalType('in_store')}
               disabled={blockedInfo?.blocked}
               className={cn(
-                'flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-medium transition-colors',
+                'theme-surface flex items-center justify-center gap-2 px-3 py-3 text-sm font-medium transition-all',
                 withdrawalType === 'in_store'
-                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
-                  : 'border-gray-200 text-gray-500 dark:border-slate-800 dark:text-slate-400',
+                  ? 'theme-text-accent ring-2'
+                  : 'theme-text-muted',
                 blockedInfo?.blocked && 'cursor-not-allowed opacity-40',
               )}
+              style={
+                withdrawalType === 'in_store'
+                  ? { ['--tw-ring-color' as string]: 'var(--c-accent)' }
+                  : undefined
+              }
             >
               <Wine className="h-4 w-4" />
               {t('inStore')}
@@ -334,11 +333,16 @@ function WithdrawContent() {
               type="button"
               onClick={() => setWithdrawalType('take_home')}
               className={cn(
-                'flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-medium transition-colors',
+                'theme-surface flex items-center justify-center gap-2 px-3 py-3 text-sm font-medium transition-all',
                 withdrawalType === 'take_home'
-                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
-                  : 'border-gray-200 text-gray-500 dark:border-slate-800 dark:text-slate-400',
+                  ? 'theme-text-accent ring-2'
+                  : 'theme-text-muted',
               )}
+              style={
+                withdrawalType === 'take_home'
+                  ? { ['--tw-ring-color' as string]: 'var(--c-accent)' }
+                  : undefined
+              }
             >
               <Home className="h-4 w-4" />
               {t('takeHome')}
@@ -348,7 +352,7 @@ function WithdrawContent() {
 
         {/* Quantity */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
+          <label className="mb-1.5 block text-sm font-medium theme-text">
             {t('quantity')}
           </label>
           <input
@@ -361,16 +365,16 @@ function WithdrawContent() {
             onChange={(e) => setRequestedQty(e.target.value)}
             placeholder="0"
             required
-            className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            className="theme-input"
           />
-          <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">
+          <p className="mt-1 text-xs theme-text-faint">
             {t('maxQty', { qty: formatNumber(deposit.remaining_qty) })}
           </p>
         </div>
 
         {/* Table number */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
+          <label className="mb-1.5 block text-sm font-medium theme-text">
             {t('tableNumber')}
           </label>
           <input
@@ -378,13 +382,13 @@ function WithdrawContent() {
             value={tableNumber}
             onChange={(e) => setTableNumber(e.target.value)}
             placeholder={t('tablePlaceholder')}
-            className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            className="theme-input"
           />
         </div>
 
         {/* Notes */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
+          <label className="mb-1.5 block text-sm font-medium theme-text">
             {t('notes')}
           </label>
           <textarea
@@ -392,14 +396,14 @@ function WithdrawContent() {
             onChange={(e) => setNotes(e.target.value)}
             placeholder={t('notesPlaceholder')}
             rows={3}
-            className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            className="theme-textarea"
           />
         </div>
 
         <button
           type="submit"
           disabled={isSubmitting || !requestedQty}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+          className="theme-button-primary w-full"
         >
           {isSubmitting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -418,7 +422,7 @@ export default function CustomerWithdrawPage() {
     <Suspense
       fallback={
         <div className="flex min-h-[50vh] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
+          <Loader2 className="h-8 w-8 animate-spin theme-text-accent" />
         </div>
       }
     >

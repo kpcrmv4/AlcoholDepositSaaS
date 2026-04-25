@@ -52,3 +52,253 @@
   outline: 2px solid #6366f1; /* indigo-500 */
   outline-offset: 2px;
 }
+
+/* ==========================================================================
+ * Per-store theme tokens (CSS variables)
+ *
+ * Each theme class (.amber-theme / .neon-theme / .sumi-theme / .sunset-theme)
+ * is set on the page wrapper by ThemedSubShell or the per-theme chrome.
+ * The variables below let the .theme-* utility classes (defined further
+ * down) restyle sub-page surfaces, inputs, buttons, and dividers WITHOUT
+ * touching the sub-page JSX. Sub-pages just use:
+ *
+ *   <div className="theme-surface theme-text-strong">
+ *     <input className="theme-input" />
+ *     <button className="theme-button-primary">…</button>
+ *   </div>
+ *
+ * and the active parent theme class supplies the right colors.
+ * ========================================================================== */
+
+.amber-theme {
+  --c-surface-bg: rgba(28, 21, 15, 0.6);
+  --c-surface-border: rgba(245, 200, 130, 0.15);
+  --c-surface-radius: 16px;
+  --c-surface-bg-strong: rgba(28, 21, 15, 0.85);
+  --c-text-strong: #fdf6e3;
+  --c-text: #f3e9d6;
+  --c-text-muted: rgba(245, 230, 200, 0.55);
+  --c-text-faint: rgba(245, 230, 200, 0.35);
+  --c-input-bg: rgba(15, 10, 6, 0.7);
+  --c-input-border: rgba(245, 200, 130, 0.18);
+  --c-input-placeholder: rgba(245, 230, 200, 0.32);
+  --c-input-focus-border: rgba(245, 200, 130, 0.45);
+  --c-divider: rgba(245, 200, 130, 0.12);
+  --c-btn-primary-bg: linear-gradient(180deg, #f5d28a 0%, #c89554 100%);
+  --c-btn-primary-text: #1a1108;
+  --c-btn-primary-shadow: 0 4px 14px rgba(200, 149, 84, 0.35);
+  --c-btn-secondary-bg: rgba(245, 200, 130, 0.1);
+  --c-btn-secondary-text: #fdf6e3;
+  --c-btn-secondary-border: rgba(245, 200, 130, 0.25);
+  --c-accent: #f5d28a;
+  --c-success: #34d399;
+  --c-warn: #fbbf24;
+  --c-danger: #fca5a5;
+}
+
+.neon-theme {
+  --c-surface-bg: rgba(13, 11, 26, 0.85);
+  --c-surface-border: rgba(255, 255, 255, 0.08);
+  --c-surface-radius: 16px;
+  --c-surface-bg-strong: rgba(20, 16, 38, 0.92);
+  --c-text-strong: #ffffff;
+  --c-text: #ecebff;
+  --c-text-muted: rgba(220, 215, 255, 0.55);
+  --c-text-faint: rgba(220, 215, 255, 0.32);
+  --c-input-bg: rgba(13, 11, 26, 0.7);
+  --c-input-border: rgba(167, 134, 223, 0.2);
+  --c-input-placeholder: rgba(220, 215, 255, 0.32);
+  --c-input-focus-border: rgba(242, 95, 76, 0.5);
+  --c-divider: rgba(255, 255, 255, 0.06);
+  --c-btn-primary-bg: linear-gradient(90deg, #f25f4c 0%, #a786df 100%);
+  --c-btn-primary-text: #ffffff;
+  --c-btn-primary-shadow: 0 0 24px rgba(232, 121, 249, 0.5);
+  --c-btn-secondary-bg: rgba(167, 134, 223, 0.1);
+  --c-btn-secondary-text: #ecebff;
+  --c-btn-secondary-border: rgba(167, 134, 223, 0.3);
+  --c-accent: #f25f4c;
+  --c-success: #5eead4;
+  --c-warn: #fde68a;
+  --c-danger: #fda4af;
+}
+
+.sumi-theme {
+  --c-surface-bg: rgba(255, 255, 255, 0.6);
+  --c-surface-border: rgba(120, 113, 108, 0.25);
+  --c-surface-radius: 2px;
+  --c-surface-bg-strong: #ffffff;
+  --c-text-strong: #1c1917;
+  --c-text: #292524;
+  --c-text-muted: #57534e;
+  --c-text-faint: #a8a29e;
+  --c-input-bg: transparent;
+  --c-input-border: #d6d3d1;
+  --c-input-placeholder: #a8a29e;
+  --c-input-focus-border: #1c1917;
+  --c-divider: rgba(120, 113, 108, 0.3);
+  --c-btn-primary-bg: #1c1917;
+  --c-btn-primary-text: #fbf7ef;
+  --c-btn-primary-shadow: 0 4px 12px rgba(28, 25, 23, 0.15);
+  --c-btn-secondary-bg: transparent;
+  --c-btn-secondary-text: #1c1917;
+  --c-btn-secondary-border: #1c1917;
+  --c-accent: #9b2c2c;
+  --c-success: #166534;
+  --c-warn: #b45309;
+  --c-danger: #991b1b;
+}
+
+.sunset-theme {
+  --c-surface-bg: rgba(255, 255, 255, 0.85);
+  --c-surface-border: rgba(255, 255, 255, 0.85);
+  --c-surface-radius: 22px;
+  --c-surface-bg-strong: #ffffff;
+  --c-text-strong: #431407;
+  --c-text: #7c2d12;
+  --c-text-muted: rgba(124, 45, 18, 0.65);
+  --c-text-faint: rgba(124, 45, 18, 0.4);
+  --c-input-bg: rgba(255, 255, 255, 0.7);
+  --c-input-border: rgba(255, 255, 255, 0.85);
+  --c-input-placeholder: rgba(124, 45, 18, 0.45);
+  --c-input-focus-border: #fb923c;
+  --c-divider: rgba(251, 146, 60, 0.25);
+  --c-btn-primary-bg: linear-gradient(90deg, #f97316 0%, #f43f5e 50%, #f59e0b 100%);
+  --c-btn-primary-text: #ffffff;
+  --c-btn-primary-shadow: 0 6px 18px rgba(251, 146, 60, 0.45);
+  --c-btn-secondary-bg: rgba(255, 255, 255, 0.55);
+  --c-btn-secondary-text: #7c2d12;
+  --c-btn-secondary-border: rgba(255, 255, 255, 0.85);
+  --c-accent: #f97316;
+  --c-success: #047857;
+  --c-warn: #b45309;
+  --c-danger: #be123c;
+}
+
+/* ----------------------------------------------------------------- */
+/* Utility classes — read from --c-* CSS vars set by parent theme.   */
+/* Slate fallback (no theme parent) lets utilities still render.     */
+/* ----------------------------------------------------------------- */
+
+:root {
+  --c-surface-bg: #ffffff;
+  --c-surface-border: #e2e8f0;
+  --c-surface-radius: 14px;
+  --c-surface-bg-strong: #ffffff;
+  --c-text-strong: #0f172a;
+  --c-text: #1e293b;
+  --c-text-muted: #64748b;
+  --c-text-faint: #94a3b8;
+  --c-input-bg: #ffffff;
+  --c-input-border: #e2e8f0;
+  --c-input-placeholder: #94a3b8;
+  --c-input-focus-border: #6366f1;
+  --c-divider: #e2e8f0;
+  --c-btn-primary-bg: #4f46e5;
+  --c-btn-primary-text: #ffffff;
+  --c-btn-primary-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+  --c-btn-secondary-bg: #f1f5f9;
+  --c-btn-secondary-text: #1e293b;
+  --c-btn-secondary-border: #e2e8f0;
+  --c-accent: #6366f1;
+  --c-success: #16a34a;
+  --c-warn: #d97706;
+  --c-danger: #dc2626;
+}
+
+.theme-surface {
+  background: var(--c-surface-bg);
+  border: 1px solid var(--c-surface-border);
+  border-radius: var(--c-surface-radius);
+  color: var(--c-text);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.theme-surface-strong {
+  background: var(--c-surface-bg-strong);
+  border: 1px solid var(--c-surface-border);
+  border-radius: var(--c-surface-radius);
+  color: var(--c-text);
+}
+
+.theme-text-strong { color: var(--c-text-strong); }
+.theme-text { color: var(--c-text); }
+.theme-text-muted { color: var(--c-text-muted); }
+.theme-text-faint { color: var(--c-text-faint); }
+.theme-text-accent { color: var(--c-accent); }
+.theme-text-success { color: var(--c-success); }
+.theme-text-warn { color: var(--c-warn); }
+.theme-text-danger { color: var(--c-danger); }
+
+.theme-divider { border-color: var(--c-divider); }
+.theme-divider-bg { background: var(--c-divider); }
+
+.theme-input,
+.theme-textarea {
+  width: 100%;
+  border: 1px solid var(--c-input-border);
+  background: var(--c-input-bg);
+  color: var(--c-text);
+  border-radius: var(--c-surface-radius);
+  outline: none;
+  transition: all 0.15s ease;
+}
+.theme-input { height: 44px; padding: 0 14px; font-size: 14px; }
+.theme-textarea { padding: 10px 14px; font-size: 14px; min-height: 88px; }
+.theme-input::placeholder,
+.theme-textarea::placeholder { color: var(--c-input-placeholder); }
+.theme-input:focus,
+.theme-textarea:focus {
+  border-color: var(--c-input-focus-border);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-input-focus-border) 18%, transparent);
+}
+
+.theme-button-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 44px; padding: 0 18px;
+  background: var(--c-btn-primary-bg);
+  color: var(--c-btn-primary-text);
+  border: none;
+  border-radius: var(--c-surface-radius);
+  font-size: 14px; font-weight: 700;
+  box-shadow: var(--c-btn-primary-shadow);
+  transition: transform 0.1s ease, opacity 0.1s ease;
+  cursor: pointer;
+}
+.theme-button-primary:active { transform: scale(0.98); }
+.theme-button-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.theme-button-secondary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 44px; padding: 0 16px;
+  background: var(--c-btn-secondary-bg);
+  color: var(--c-btn-secondary-text);
+  border: 1px solid var(--c-btn-secondary-border);
+  border-radius: var(--c-surface-radius);
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.1s ease;
+}
+.theme-button-secondary:active { opacity: 0.85; }
+.theme-button-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.theme-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px;
+  background: var(--c-btn-secondary-bg);
+  color: var(--c-btn-secondary-text);
+  border: 1px solid var(--c-btn-secondary-border);
+  border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+}
+
+/* Reusable status chip — content classes set the color tokens */
+.theme-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.02em;
+}
+

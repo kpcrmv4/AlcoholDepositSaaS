@@ -2163,6 +2163,7 @@ export type Database = {
           bar_notify_group_id: string | null
           borrow_notification_roles: string[] | null
           created_at: string | null
+          customer_theme: string | null
           deposit_notify_group_id: string | null
           id: string
           is_central: boolean | null
@@ -2181,6 +2182,7 @@ export type Database = {
           bar_notify_group_id?: string | null
           borrow_notification_roles?: string[] | null
           created_at?: string | null
+          customer_theme?: string | null
           deposit_notify_group_id?: string | null
           id?: string
           is_central?: boolean | null
@@ -2199,6 +2201,7 @@ export type Database = {
           bar_notify_group_id?: string | null
           borrow_notification_roles?: string[] | null
           created_at?: string | null
+          customer_theme?: string | null
           deposit_notify_group_id?: string | null
           id?: string
           is_central?: boolean | null

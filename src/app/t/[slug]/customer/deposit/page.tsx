@@ -264,7 +264,7 @@ function DepositContent() {
   if (authLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
+        <Loader2 className="h-8 w-8 animate-spin theme-text-accent" />
       </div>
     );
   }
@@ -273,8 +273,8 @@ function DepositContent() {
   if (authError) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-6 text-center">
-        <AlertCircle className="h-12 w-12 text-red-400" />
-        <p className="text-sm text-gray-600 dark:text-slate-300">{authError}</p>
+        <AlertCircle className="h-12 w-12 theme-text-danger" />
+        <p className="text-sm theme-text">{authError}</p>
       </div>
     );
   }
@@ -283,16 +283,16 @@ function DepositContent() {
   if (success) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-emerald-950/40">
-          <CheckCircle2 className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
+        <div className="theme-surface flex h-16 w-16 items-center justify-center rounded-full">
+          <CheckCircle2 className="h-8 w-8 theme-text-success" />
         </div>
-        <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">
+        <h2 className="text-lg font-bold theme-text-strong">
           {t('successTitle')}
         </h2>
-        <p className="text-sm text-gray-500 dark:text-slate-400">{t('successSubtitle')}</p>
+        <p className="text-sm theme-text-muted">{t('successSubtitle')}</p>
         <button
           onClick={() => router.push('/customer')}
-          className="mt-2 rounded-full bg-indigo-600 px-8 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+          className="theme-button-primary mt-2 px-8"
         >
           {t('goHome')}
         </button>
@@ -305,20 +305,18 @@ function DepositContent() {
       {/* Back */}
       <button
         onClick={() => router.back()}
-        className="mb-4 flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400"
+        className="mb-4 flex items-center gap-1 text-sm theme-text-muted"
       >
         <ArrowLeft className="h-4 w-4" />
         {t('back')}
       </button>
 
-      <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">{t('title')}</h2>
-      <p className="mt-0.5 text-sm text-gray-500 dark:text-slate-400">
-        {t('subtitle')}
-      </p>
+      <h2 className="text-lg font-bold theme-text-strong">{t('title')}</h2>
+      <p className="mt-0.5 text-sm theme-text-muted">{t('subtitle')}</p>
 
       {/* Error */}
       {error && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-600">
+        <div className="theme-surface mt-3 flex items-center gap-2 p-3 text-sm theme-text-danger">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
@@ -328,8 +326,8 @@ function DepositContent() {
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         {/* Customer name */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
-            {t('customerName')} <span className="text-red-500">*</span>
+          <label className="mb-1.5 block text-sm font-medium theme-text">
+            {t('customerName')} <span className="theme-text-danger">*</span>
           </label>
           <input
             type="text"
@@ -337,14 +335,14 @@ function DepositContent() {
             onChange={(e) => setCustomerName(e.target.value)}
             placeholder={t('customerNamePlaceholder')}
             required
-            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+            className="theme-input"
           />
         </div>
 
         {/* Phone */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
-            {t('phone')} <span className="text-red-500">*</span>
+          <label className="mb-1.5 block text-sm font-medium theme-text">
+            {t('phone')} <span className="theme-text-danger">*</span>
           </label>
           <input
             type="tel"
@@ -352,13 +350,13 @@ function DepositContent() {
             onChange={(e) => setCustomerPhone(e.target.value)}
             placeholder={t('phonePlaceholder')}
             required
-            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+            className="theme-input"
           />
         </div>
 
         {/* Table number */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
+          <label className="mb-1.5 block text-sm font-medium theme-text">
             {t('tableNumber')}
           </label>
           <input
@@ -366,13 +364,13 @@ function DepositContent() {
             value={tableNumber}
             onChange={(e) => setTableNumber(e.target.value)}
             placeholder={t('tablePlaceholder')}
-            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+            className="theme-input"
           />
         </div>
 
         {/* Photo upload */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
+          <label className="mb-1.5 block text-sm font-medium theme-text">
             {t('photo')}
           </label>
 
@@ -392,10 +390,10 @@ function DepositContent() {
               <img
                 src={photoPreview}
                 alt={t('photoAlt')}
-                className="h-48 w-full rounded-xl border border-gray-200 dark:border-slate-800 object-cover"
+                className="theme-surface h-48 w-full object-cover"
               />
               {isUploading && (
-                <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40">
+                <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40">
                   <Loader2 className="h-8 w-8 animate-spin text-white" />
                 </div>
               )}
@@ -409,7 +407,7 @@ function DepositContent() {
                 </button>
               )}
               {photoUrl && !isUploading && (
-                <div className="absolute bottom-2 left-2 rounded-full bg-green-500 px-2 py-0.5 text-xs font-medium text-white">
+                <div className="absolute bottom-2 left-2 rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-medium text-white">
                   {t('uploaded')}
                 </div>
               )}
@@ -418,11 +416,12 @@ function DepositContent() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 dark:border-slate-700 py-8 text-gray-400 dark:text-slate-500 transition-colors active:border-indigo-500 active:text-indigo-600"
+              className="theme-surface flex w-full flex-col items-center justify-center gap-2 border-2 border-dashed py-8 theme-text-faint"
+              style={{ borderStyle: 'dashed' }}
             >
               <Camera className="h-8 w-8" />
               <span className="text-sm">{t('takePhoto')}</span>
-              <span className="text-xs text-gray-300 dark:text-slate-600">
+              <span className="text-xs theme-text-faint">
                 {t('photoFormats')}
               </span>
             </button>
@@ -431,7 +430,7 @@ function DepositContent() {
 
         {/* Notes */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
+          <label className="mb-1.5 block text-sm font-medium theme-text">
             {t('notes')}
           </label>
           <textarea
@@ -439,7 +438,7 @@ function DepositContent() {
             onChange={(e) => setNotes(e.target.value)}
             placeholder={t('notesPlaceholder')}
             rows={3}
-            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+            className="theme-textarea"
           />
         </div>
 
@@ -447,7 +446,7 @@ function DepositContent() {
         <button
           type="submit"
           disabled={isSubmitting || isUploading || !customerName.trim() || !customerPhone.trim()}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-60 hover:bg-indigo-700"
+          className="theme-button-primary w-full"
         >
           {isSubmitting ? (
             <Loader2 className="h-4 w-4 animate-spin" />

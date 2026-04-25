@@ -152,7 +152,7 @@ function HistoryContent() {
   if (authLoading || isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
+        <Loader2 className="h-8 w-8 animate-spin theme-text-accent" />
       </div>
     );
   }
@@ -160,30 +160,26 @@ function HistoryContent() {
   if (authError) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-6 text-center">
-        <AlertCircle className="h-12 w-12 text-red-400" />
-        <p className="text-sm text-gray-600 dark:text-slate-300">{authError}</p>
+        <AlertCircle className="h-12 w-12 theme-text-danger" />
+        <p className="text-sm theme-text">{authError}</p>
       </div>
     );
   }
 
   return (
     <div className="px-4 py-4">
-      <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">
-        {t('title')}
-      </h2>
-      <p className="mt-0.5 text-sm text-gray-500 dark:text-slate-400">
-        {t('subtitle')}
-      </p>
+      <h2 className="text-lg font-bold theme-text-strong">{t('title')}</h2>
+      <p className="mt-0.5 text-sm theme-text-muted">{t('subtitle')}</p>
 
       {error && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-300">
+        <div className="theme-surface mt-3 flex items-center gap-2 p-3 text-sm theme-text-danger">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
       )}
 
       {history.length === 0 ? (
-        <div className="mt-12 flex flex-col items-center gap-2 text-gray-400 dark:text-slate-500">
+        <div className="mt-12 flex flex-col items-center gap-2 theme-text-faint">
           <History className="h-12 w-12" />
           <p className="text-sm">{t('noHistory')}</p>
         </div>
@@ -195,14 +191,14 @@ function HistoryContent() {
             return (
               <div
                 key={`${item.type}-${item.id}`}
-                className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                className="theme-surface flex items-start gap-3 p-4 shadow-sm"
               >
                 <div
                   className={cn(
                     'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
                     item.type === 'deposit'
-                      ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400'
-                      : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400',
+                      ? 'bg-indigo-100/30 theme-text-accent'
+                      : 'bg-emerald-100/30 theme-text-success',
                   )}
                 >
                   {item.type === 'deposit' ? (
@@ -213,11 +209,11 @@ function HistoryContent() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100">
+                    <p className="truncate text-sm font-medium theme-text-strong">
                       {item.product_name}
                     </p>
                     {item.type === 'deposit' ? (
-                      <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+                      <span className="theme-pill shrink-0 text-[10px] theme-text-accent">
                         {t('deposit')}
                       </span>
                     ) : wStatus ? (
@@ -230,16 +226,16 @@ function HistoryContent() {
                         {wStatus.label}
                       </span>
                     ) : (
-                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      <span className="theme-pill shrink-0 text-[10px]">
                         {item.status}
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
+                  <p className="mt-0.5 text-xs theme-text-muted">
                     {t('quantity', { qty: formatNumber(item.quantity) })}
                     {item.deposit_code && ` · ${item.deposit_code}`}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-gray-400 dark:text-slate-500">
+                  <p className="mt-0.5 text-[11px] theme-text-faint">
                     {formatThaiDateTime(item.created_at)}
                     {item.store_name && ` · ${item.store_name}`}
                   </p>
@@ -258,7 +254,7 @@ export default function CustomerHistoryPage() {
     <Suspense
       fallback={
         <div className="flex min-h-[50vh] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
+          <Loader2 className="h-8 w-8 animate-spin theme-text-accent" />
         </div>
       }
     >
