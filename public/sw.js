@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cellarlyos-v2';
+const CACHE_NAME = 'cellarlyos-v3';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -24,26 +24,42 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch — network first, fallback to cache
+// Fetch — network first, fallback to cache. Only intercepts the static
+// shell ('/' and '/manifest.json') so dynamic, tenant-scoped pages always
+// hit the server and never serve stale data after a tenant is deleted /
+// renamed / reconfigured.
 self.addEventListener('fetch', (event) => {
-  // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
-  // Skip API and auth routes
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/_next/')) return;
+  if (url.origin !== self.location.origin) return;
+
+  // Only handle the static shell. Everything else (pages, API, _next bundles,
+  // tenant-scoped routes /t/*) passes through to the network unchanged.
+  const isShell = STATIC_ASSETS.includes(url.pathname);
+  if (!isShell) return;
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Cache successful responses
-        if (response.ok) {
+    (async () => {
+      try {
+        const response = await fetch(event.request);
+        if (response && response.ok) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
         }
         return response;
-      })
-      .catch(() => caches.match(event.request))
+      } catch (_err) {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        // Always return a valid Response — never `undefined` (which would
+        // throw "Failed to convert value to 'Response'" inside respondWith).
+        return new Response('Offline', {
+          status: 503,
+          statusText: 'Offline',
+          headers: { 'Content-Type': 'text/plain' },
+        });
+      }
+    })()
   );
 });
 
