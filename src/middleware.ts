@@ -7,6 +7,7 @@ const PUBLIC_ROUTES = [
   '/invite',                       // /invite/{token}
   '/api/auth/register',
   '/api/auth/callback',
+  '/api/invite',                   // /api/invite/{token}/accept — auths itself
   '/api/line/webhook',
   '/api/cron',
   '/api/chat/bot-message',
