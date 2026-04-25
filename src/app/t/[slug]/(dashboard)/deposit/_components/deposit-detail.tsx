@@ -633,14 +633,15 @@ export function DepositDetail({ deposit: initialDeposit, onBack, storeName = '' 
     const supabase = createClient();
 
     try {
-      // Find central store
+      // Find central store. maybeSingle() so the noHQ tenant case returns
+      // null cleanly instead of a 406 from the REST endpoint.
       const { data: centralStore } = await supabase
         .from('stores')
         .select('id')
         .eq('is_central', true)
         .eq('active', true)
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!centralStore) {
         toast({ type: 'error', title: t('detail.noHQ'), message: t('detail.noHQMessage') });

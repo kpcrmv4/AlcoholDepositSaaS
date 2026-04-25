@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
         priority: 'normal',
         summary: {
           customer: customerName || 'ลูกค้า',
-          items: 'รอ Staff ระบุรายการ',
+          items: 'รอ Staff มารับ',
           note: tableNumber
             ? `โต๊ะ ${tableNumber}`
             : (notes || customerPhone || undefined),

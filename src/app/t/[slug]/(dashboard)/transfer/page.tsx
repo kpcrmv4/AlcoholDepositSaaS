@@ -200,13 +200,14 @@ export default function TransferPage() {
 
   const loadCentralStore = useCallback(async () => {
     const supabase = createClient();
+    // maybeSingle so tenants without an HQ branch don't 406 the response.
     const { data } = await supabase
       .from('stores')
       .select('id')
       .eq('is_central', true)
       .eq('active', true)
       .limit(1)
-      .single();
+      .maybeSingle();
     if (data) setCentralStoreId(data.id);
   }, []);
 

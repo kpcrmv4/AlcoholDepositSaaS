@@ -306,16 +306,19 @@ export default function DepositPage() {
     setIsLoadingTransferBatches(true);
     const supabase = createClient();
 
-    // Find central store
+    // Find central store. Use maybeSingle() so tenants without an HQ branch
+    // get a clean null instead of a 406 — the rest of this function already
+    // bails out when centralStore is missing.
     const { data: centralStore } = await supabase
       .from('stores')
       .select('id')
       .eq('is_central', true)
       .eq('active', true)
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!centralStore) {
+      setTransferBatches([]);
       setIsLoadingTransferBatches(false);
       return;
     }
@@ -429,7 +432,7 @@ export default function DepositPage() {
       line_user_id: r.line_user_id,
       customer_name: r.customer_name || 'ลูกค้า',
       customer_phone: r.customer_phone,
-      product_name: r.product_name || 'รอ Staff ระบุรายการ',
+      product_name: r.product_name || 'รอ Staff มารับ',
       category: null,
       quantity: r.quantity ?? 0,
       remaining_qty: r.quantity ?? 0,
@@ -624,10 +627,11 @@ export default function DepositPage() {
         .eq('is_central', true)
         .eq('active', true)
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!centralStore) {
         toast({ type: 'error', title: t('transfer.noHQ'), message: t('transfer.noHQMessage') });
+        setIsBatchTransferring(false);
         return;
       }
 

@@ -77,7 +77,7 @@ async function getDeposits(lineUserId: string, opts: GetDepositsOptions = {}) {
     id: `req-${r.id}`,
     request_id: r.id,
     deposit_code: null,
-    product_name: r.product_name || 'รอ Staff ระบุรายการ',
+    product_name: r.product_name || 'รอ Staff มารับ',
     category: null,
     remaining_qty: r.quantity ?? 0,
     remaining_percent: 0,
