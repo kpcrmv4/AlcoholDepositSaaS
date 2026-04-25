@@ -1,4 +1,5 @@
 import { formatThaiDate, formatNumber, formatPercent } from '@/lib/utils/format';
+import type { CustomerThemeKey } from '@/lib/customer-themes';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,6 +55,68 @@ const COLORS = {
   separator: '#EEEEEE',
   white: '#FFFFFF',
 } as const;
+
+// ---------------------------------------------------------------------------
+// Per-store theme palette
+//
+// Customer-facing flex builders accept an optional `theme` param (keyed off
+// `stores.customer_theme`). The brand-driven parts of each flex bubble —
+// welcome header background, primary button, accented highlight text — pull
+// from the per-theme palette below; semantic colors (green=success,
+// red=rejection, blue=info, amber=warning) intentionally stay constant so
+// customers can read message status at a glance regardless of theme.
+//
+// Adding a new theme: add a key in customer-themes.ts, then a row here.
+// ---------------------------------------------------------------------------
+
+interface FlexThemePalette {
+  /** Primary brand color used for welcome header bg + button bg. */
+  brand: string;
+  /** Text/icon color on top of `brand`. */
+  brandText: string;
+  /** Accent color used for highlighted text (codes, names) inside the body. */
+  accent: string;
+}
+
+const THEME_PALETTES: Record<CustomerThemeKey, FlexThemePalette> = {
+  amber: {
+    brand: '#1a1108',     // dark whiskey — keeps the speakeasy feel
+    brandText: '#f5d28a', // warm gold text
+    accent: '#c89554',    // amber accent for codes / store names
+  },
+  neon: {
+    brand: '#0d0b1a',     // dark navy — neon needs contrast
+    brandText: '#f25f4c', // coral text on dark
+    accent: '#a786df',    // lavender accent
+  },
+  sumi: {
+    brand: '#1c1917',     // sumi black ink
+    brandText: '#fbf7ef', // washi cream
+    accent: '#9b2c2c',    // seal-stamp red accent
+  },
+  sunset: {
+    brand: '#fb923c',     // peach/coral primary
+    brandText: '#ffffff',
+    accent: '#f43f5e',    // rose accent
+  },
+  crimson: {
+    brand: '#7a1a1a',     // wine red bg
+    brandText: '#faf3e8', // cream text
+    accent: '#7a1a1a',    // wine accent for body highlights
+  },
+};
+
+/**
+ * Resolves the brand palette for a given theme. Returns the amber palette
+ * when `theme` is null/undefined/unknown so legacy call sites that haven't
+ * been updated yet keep their previous look (amber is also the schema
+ * default for `stores.customer_theme`).
+ */
+export function getThemeFlexColors(
+  theme: CustomerThemeKey | null | undefined,
+): FlexThemePalette {
+  return THEME_PALETTES[theme as CustomerThemeKey] ?? THEME_PALETTES.amber;
+}
 
 // ---------------------------------------------------------------------------
 // Helper builders
