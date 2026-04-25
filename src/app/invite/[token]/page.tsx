@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import InviteClient from './invite-client';
 
 export const dynamic = 'force-dynamic';
@@ -26,6 +26,15 @@ export default async function InvitePage({ params }: Params) {
   const expired = new Date(inv.expires_at).getTime() < Date.now();
   const accepted = !!inv.accepted_at;
 
+  // Is the caller already signed in, and does their email match the invite?
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const sessionEmail = user?.email ?? null;
+  const sessionMatches =
+    !!sessionEmail && sessionEmail.toLowerCase() === inv.email.toLowerCase();
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-gray-900">
       <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-950">
@@ -40,6 +49,10 @@ export default async function InvitePage({ params }: Params) {
             tenant_slug: (inv.tenants as any)?.slug ?? null,
             brand_color: (inv.tenants as any)?.brand_color ?? '#4f46e5',
             logo_url: (inv.tenants as any)?.logo_url ?? null,
+          }}
+          session={{
+            email: sessionEmail,
+            matches: sessionMatches,
           }}
         />
       </div>
