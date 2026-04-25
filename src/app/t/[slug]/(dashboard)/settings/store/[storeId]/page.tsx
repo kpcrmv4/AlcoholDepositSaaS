@@ -799,7 +799,11 @@ export default function StoreDetailSettingsPage() {
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 2: กลุ่ม LINE แจ้งเตือน                                     */}
+      {/* Each group input is module-specific — hide the ones the tenant     */}
+      {/* doesn't actually use. Section is hidden entirely when no group     */}
+      {/* applies.                                                           */}
       {/* ------------------------------------------------------------------ */}
+      {(moduleEnabled('stock') || moduleEnabled('deposit')) && (
       <Card padding="none">
         <CardHeader
           title={t('storeDetail.lineGroupTitle')}
@@ -811,27 +815,33 @@ export default function StoreDetailSettingsPage() {
           }
         />
         <CardContent className="space-y-4">
-          <Input
-            label={t('storeDetail.stockNotifyLabel')}
-            value={stockNotifyGroupId}
-            onChange={(e) => setStockNotifyGroupId(e.target.value)}
-            placeholder={t('storeDetail.lineGroupPlaceholder')}
-            hint={t('storeDetail.stockNotifyHint')}
-          />
-          <Input
-            label={t('storeDetail.depositNotifyLabel')}
-            value={depositNotifyGroupId}
-            onChange={(e) => setDepositNotifyGroupId(e.target.value)}
-            placeholder={t('storeDetail.lineGroupPlaceholder')}
-            hint={t('storeDetail.depositNotifyHint')}
-          />
-          <Input
-            label={t('storeDetail.barNotifyLabel')}
-            value={barNotifyGroupId}
-            onChange={(e) => setBarNotifyGroupId(e.target.value)}
-            placeholder={t('storeDetail.lineGroupPlaceholder')}
-            hint={t('storeDetail.barNotifyHint')}
-          />
+          {moduleEnabled('stock') && (
+            <Input
+              label={t('storeDetail.stockNotifyLabel')}
+              value={stockNotifyGroupId}
+              onChange={(e) => setStockNotifyGroupId(e.target.value)}
+              placeholder={t('storeDetail.lineGroupPlaceholder')}
+              hint={t('storeDetail.stockNotifyHint')}
+            />
+          )}
+          {moduleEnabled('deposit') && (
+            <Input
+              label={t('storeDetail.depositNotifyLabel')}
+              value={depositNotifyGroupId}
+              onChange={(e) => setDepositNotifyGroupId(e.target.value)}
+              placeholder={t('storeDetail.lineGroupPlaceholder')}
+              hint={t('storeDetail.depositNotifyHint')}
+            />
+          )}
+          {moduleEnabled('deposit') && (
+            <Input
+              label={t('storeDetail.barNotifyLabel')}
+              value={barNotifyGroupId}
+              onChange={(e) => setBarNotifyGroupId(e.target.value)}
+              placeholder={t('storeDetail.lineGroupPlaceholder')}
+              hint={t('storeDetail.barNotifyHint')}
+            />
+          )}
           {/* LINE Notify Toggle */}
           <div className="flex items-center justify-between rounded-lg bg-gray-50 p-4 dark:bg-gray-700/50">
             <div>
@@ -871,6 +881,7 @@ export default function StoreDetailSettingsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Section 2.5: การแจ้งเตือนพนักงาน (Staff Notifications)               */}
