@@ -16,6 +16,7 @@ import {
   openDepositSystemFlex,
 } from '@/lib/line/flex-templates';
 import { buildCustomerEntryUrl } from '@/lib/line/customer-entry-url';
+import { isCustomerTheme } from '@/lib/customer-themes';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,6 +45,8 @@ interface StoreInfo {
   deposit_notify_group_id: string | null;
   bar_notify_group_id: string | null;
   stock_notify_group_id: string | null;
+  /** Per-store customer LIFF theme; passed through to Flex builders */
+  customer_theme: string | null;
 }
 
 interface TenantInfo {
@@ -83,8 +86,7 @@ function verifySignature(
 // ---------------------------------------------------------------------------
 
 const STORE_SELECT =
-  'id, store_code, store_name, tenant_id, line_token, line_channel_secret, ' +
-  'deposit_notify_group_id, bar_notify_group_id, stock_notify_group_id';
+  'id, store_code, store_name, tenant_id, line_token, line_channel_secret, deposit_notify_group_id, bar_notify_group_id, stock_notify_group_id, customer_theme';
 
 /**
  * Resolve the tenant that owns this webhook destination.
@@ -493,6 +495,9 @@ async function handleTextMessage(
         store_name: storeName,
         expiry_date: deposit.expiry_date,
         customer_portal_url: portalUrl,
+        theme: isCustomerTheme(storeInfo?.customer_theme)
+          ? storeInfo.customer_theme
+          : null,
       });
       await replyMessage(event.replyToken, [flex], botToken);
       return;
@@ -577,6 +582,9 @@ async function handleTextMessage(
       store_name: storeInfo?.store_name || 'CellarlyOS',
       active_deposit_count: count ?? 0,
       entry_url: entryUrl,
+      theme: isCustomerTheme(storeInfo?.customer_theme)
+        ? storeInfo.customer_theme
+        : null,
     });
 
     await replyMessage(event.replyToken, [flex], botToken);
