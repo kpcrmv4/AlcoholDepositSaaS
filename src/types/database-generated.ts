@@ -2060,6 +2060,7 @@ export type Database = {
           staff_registration_code: string | null
           store_id: string
           withdrawal_blocked_days: string[] | null
+          audit_log_retention_days: number | null
         }
         Insert: {
           chat_bot_borrow_enabled?: boolean
@@ -2098,6 +2099,7 @@ export type Database = {
           staff_registration_code?: string | null
           store_id: string
           withdrawal_blocked_days?: string[] | null
+          audit_log_retention_days?: number | null
         }
         Update: {
           chat_bot_borrow_enabled?: boolean
@@ -2136,6 +2138,7 @@ export type Database = {
           staff_registration_code?: string | null
           store_id?: string
           withdrawal_blocked_days?: string[] | null
+          audit_log_retention_days?: number | null
         }
         Relationships: [
           {

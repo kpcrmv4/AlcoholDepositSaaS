@@ -604,7 +604,12 @@ CREATE TABLE store_settings (
   print_server_working_hours JSONB DEFAULT '{"enabled": true, "startHour": 12, "startMinute": 0, "endHour": 6, "endMinute": 0}'::jsonb,
 
   -- Withdrawal
-  withdrawal_blocked_days TEXT[] DEFAULT '{Fri,Sat}'
+  withdrawal_blocked_days TEXT[] DEFAULT '{Fri,Sat}',
+
+  -- Audit log retention (per-store). NULL = keep forever; the audit-cleanup
+  -- cron deletes rows older than this when a value is set.
+  audit_log_retention_days INTEGER
+    CHECK (audit_log_retention_days IS NULL OR audit_log_retention_days >= 1)
 );
 
 -- ==========================================
