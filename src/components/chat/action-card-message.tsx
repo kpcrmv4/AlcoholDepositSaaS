@@ -193,7 +193,10 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
           message: updated,
         } as unknown as Record<string, unknown>);
 
-        // Sync staff received info back to deposit record
+        // Sync staff received info back to deposit record. Guard on
+        // status='pending_confirm' so a race with a concurrent cancel
+        // (which sets status='cancelled') doesn't overwrite audit fields
+        // on a row that's no longer active.
         if (meta.reference_table === 'deposits' && meta.reference_id) {
           supabase
             .from('deposits')
@@ -202,6 +205,7 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
               received_photo_url: photoUrl || undefined,
             })
             .eq('deposit_code', meta.reference_id)
+            .eq('status', 'pending_confirm')
             .then(() => {});
         }
 
@@ -333,7 +337,9 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
           if (isBarCompleting && storeId) {
             const summary = meta.summary;
 
-            // Update deposit record: pending_confirm → in_store
+            // Update deposit record: pending_confirm → in_store. Guard on
+            // status='pending_confirm' so a race with a concurrent cancel
+            // (which sets status='cancelled') doesn't resurrect the row.
             if (meta.reference_table === 'deposits' && meta.reference_id) {
               supabase
                 .from('deposits')
@@ -343,6 +349,7 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
                   remaining_percent: barRemainingPercent ? Number(barRemainingPercent) : undefined,
                 })
                 .eq('deposit_code', meta.reference_id)
+                .eq('status', 'pending_confirm')
                 .then(() => {});
             }
 
@@ -563,8 +570,18 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
           // Non-blocking
         }
       } else if (meta.action_type === 'deposit_claim' && meta.reference_table === 'deposits' && meta.reference_id) {
-        // Reject deposit → restore to pending_confirm or mark accordingly
-        // (ยกเลิกรายการฝากเหล้า — doesn't delete, just cancels the action card)
+        // Cancel the underlying deposit so the deposit list stops showing it
+        // as pending_confirm. Only cancel rows that are still pre-bar; never
+        // touch already-confirmed/withdrawn ones.
+        await supabase
+          .from('deposits')
+          .update({
+            status: 'cancelled',
+            cancelled_by: currentUserId,
+            cancelled_at: new Date().toISOString(),
+          })
+          .eq('deposit_code', meta.reference_id)
+          .in('status', ['pending_confirm']);
       }
 
       setShowRejectConfirm(false);

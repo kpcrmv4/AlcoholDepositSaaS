@@ -9,6 +9,7 @@ export const DEPOSIT_STATUS_LABELS: Record<string, string> = {
   expired: 'หมดอายุ',
   transfer_pending: 'รอนำส่ง HQ',
   transferred_out: 'โอนออก',
+  cancelled: 'ยกเลิกแล้ว',
   // Virtual status used by /deposit page for unapproved deposit_requests
   request: 'รอรับ',
 };
