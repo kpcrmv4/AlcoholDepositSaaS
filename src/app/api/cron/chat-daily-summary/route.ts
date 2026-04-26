@@ -88,6 +88,19 @@ export async function GET(request: NextRequest) {
       // recently-completed shift.
       const hours = await fetchStoreHours(supabase, store.id);
       const window = currentShiftWindow(hours);
+
+      // Defensive: a DB trigger already rejects send_time inside open
+      // hours, but if anything bypasses it (manual SQL edit, trigger
+      // disabled mid-deploy, etc.) the cron must still refuse rather
+      // than summarise a shift that isn't over yet.
+      if (window.endUTC.getTime() > Date.now()) {
+        console.warn(
+          `[Daily Summary] Skipping ${store.store_name}: current shift hasn't ended (ends ${window.endUTC.toISOString()})`,
+        );
+        results.push({ store: store.store_name, sent: false });
+        continue;
+      }
+
       const startUTC = window.startUTC.toISOString();
       const endUTC = window.endUTC.toISOString();
       const [bizY, bizM, bizD] = window.businessDate.split('-').map(Number);
