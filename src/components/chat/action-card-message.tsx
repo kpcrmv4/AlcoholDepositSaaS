@@ -193,7 +193,10 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
           message: updated,
         } as unknown as Record<string, unknown>);
 
-        // Sync staff received info back to deposit record
+        // Sync staff received info back to deposit record. Guard on
+        // status='pending_confirm' so a race with a concurrent cancel
+        // (which sets status='cancelled') doesn't overwrite audit fields
+        // on a row that's no longer active.
         if (meta.reference_table === 'deposits' && meta.reference_id) {
           supabase
             .from('deposits')
@@ -202,6 +205,7 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
               received_photo_url: photoUrl || undefined,
             })
             .eq('deposit_code', meta.reference_id)
+            .eq('status', 'pending_confirm')
             .then(() => {});
         }
 
@@ -333,7 +337,9 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
           if (isBarCompleting && storeId) {
             const summary = meta.summary;
 
-            // Update deposit record: pending_confirm → in_store
+            // Update deposit record: pending_confirm → in_store. Guard on
+            // status='pending_confirm' so a race with a concurrent cancel
+            // (which sets status='cancelled') doesn't resurrect the row.
             if (meta.reference_table === 'deposits' && meta.reference_id) {
               supabase
                 .from('deposits')
@@ -343,6 +349,7 @@ export const ActionCardMessage = memo(function ActionCardMessage({ message, curr
                   remaining_percent: barRemainingPercent ? Number(barRemainingPercent) : undefined,
                 })
                 .eq('deposit_code', meta.reference_id)
+                .eq('status', 'pending_confirm')
                 .then(() => {});
             }
 
