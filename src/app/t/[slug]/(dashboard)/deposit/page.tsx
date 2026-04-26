@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils/cn';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAppStore } from '@/stores/app-store';
 import { currentShiftRange } from '@/lib/utils/date';
+import { parseStoreHours } from '@/lib/store/hours';
 import {
   Button,
   Badge,
@@ -250,12 +251,10 @@ export default function DepositPage() {
         .select('print_server_working_hours')
         .eq('store_id', currentStoreId)
         .single();
-      const wh = data?.print_server_working_hours as { startHour?: number; endHour?: number } | null;
-      if (wh?.startHour != null && wh?.endHour != null) {
-        const shift = currentShiftRange(wh.startHour, wh.endHour);
-        setDateFrom(shift.from);
-        setDateTo(shift.to);
-      }
+      const hours = parseStoreHours(data?.print_server_working_hours);
+      const shift = currentShiftRange(hours);
+      setDateFrom(shift.from);
+      setDateTo(shift.to);
     };
     loadWorkingHours();
   }, [currentStoreId]);

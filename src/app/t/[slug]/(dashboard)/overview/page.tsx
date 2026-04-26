@@ -12,8 +12,12 @@ import {
   daysFromNowISO,
   daysAgoBangkokISO,
   startOfTodayBangkokISO,
-  nowBangkok,
 } from '@/lib/utils/date';
+import {
+  bangkokBusinessDate,
+  fetchStoreHours,
+  type StoreHours,
+} from '@/lib/store/hours';
 import { Card, CardHeader, toast } from '@/components/ui';
 import { useEnabledModules } from '@/lib/tenant/enabled-modules';
 import {
@@ -642,44 +646,38 @@ const COLOR_MAP: Record<
 // ---------------------------------------------------------------------------
 
 /**
- * Bucket rows by Bangkok-local calendar day.
- * Returns an array of length `days` where index 0 = (today - days + 1) and
- * index `days - 1` = today. Bucketing uses the row's `created_at` converted
- * to its Bangkok wall-clock date (YYYY-MM-DD), so a deposit made at 23:30
- * Bangkok on day N lands in day N's bucket regardless of UTC offset.
+ * Bucket rows by *business day* in Bangkok timezone.
+ *
+ * Returns an array of length `days` where index 0 = (today's business day −
+ * days + 1) and index `days - 1` = today's business day. For overnight
+ * bars (e.g. open 11:00, close 06:00 next morning), a deposit at 03:00 on
+ * a Wed clock lands in Tuesday's bucket — see `bangkokBusinessDate`.
  */
-function bucketByBangkokDay<T extends { created_at: string }>(
+function bucketByBusinessDay<T extends { created_at: string }>(
   rows: ReadonlyArray<T> | null | undefined,
   days: number,
+  hours: StoreHours,
   predicate?: (row: T) => boolean,
 ): number[] {
   const buckets = new Array<number>(days).fill(0);
   if (!rows || rows.length === 0) return buckets;
 
-  // Build a key → index map for the last `days` Bangkok-local dates.
+  // Build a key → index map for the last `days` business dates, anchored
+  // on today's business date (which itself may differ from today's
+  // calendar date — e.g. before 06:00 we're still in yesterday's shift).
+  const todayBusinessDate = bangkokBusinessDate(new Date(), hours);
+  const [ty, tm, td] = todayBusinessDate.split('-').map(Number);
   const dateToIdx = new Map<string, number>();
-  const today = nowBangkok();
   for (let i = 0; i < days; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - (days - 1 - i));
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    dateToIdx.set(`${y}-${m}-${day}`, i);
+    const offset = -(days - 1 - i);
+    const shifted = new Date(Date.UTC(ty, tm - 1, td) + offset * 86400000);
+    const key = `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`;
+    dateToIdx.set(key, i);
   }
-
-  // sv-SE locale formats as "YYYY-MM-DD" — perfect for our key.
-  const fmt = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Bangkok',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
 
   for (const r of rows) {
     if (predicate && !predicate(r)) continue;
-    const key = fmt.format(new Date(r.created_at));
-    const idx = dateToIdx.get(key);
+    const idx = dateToIdx.get(bangkokBusinessDate(r.created_at, hours));
     if (idx !== undefined) buckets[idx]++;
   }
   return buckets;
@@ -1579,23 +1577,29 @@ export default function OverviewPage() {
     (async () => {
       const supabase = createClient();
       const since = daysAgoBangkokISO(30);
-      const { data: rows, error } = await supabase
-        .from('deposits')
-        .select('created_at, status')
-        .eq('store_id', singleStoreId)
-        .gte('created_at', since);
+      // Fetch hours + raw deposits in parallel — bucketing must respect
+      // the store's overnight schedule (e.g. close 06:00) so a deposit
+      // at 03:00 lands in the previous business day's bucket.
+      const [hours, rowsRes] = await Promise.all([
+        fetchStoreHours(supabase, singleStoreId),
+        supabase
+          .from('deposits')
+          .select('created_at, status')
+          .eq('store_id', singleStoreId)
+          .gte('created_at', since),
+      ]);
       if (cancelled) return;
-      if (error) {
-        console.error('Single-branch timeseries fetch failed:', error);
+      if (rowsRes.error) {
+        console.error('Single-branch timeseries fetch failed:', rowsRes.error);
         return;
       }
       type Row = { created_at: string; status: string | null };
-      const safe = (rows || []) as Row[];
+      const safe = (rowsRes.data || []) as Row[];
       setDailyDeposits(
-        bucketByBangkokDay(safe, 30, (r) => r.status !== 'cancelled'),
+        bucketByBusinessDay(safe, 30, hours, (r) => r.status !== 'cancelled'),
       );
       setDailyWithdrawals(
-        bucketByBangkokDay(safe, 30, (r) => r.status === 'withdrawn'),
+        bucketByBusinessDay(safe, 30, hours, (r) => r.status === 'withdrawn'),
       );
     })();
     return () => {
