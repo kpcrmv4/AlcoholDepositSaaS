@@ -9,6 +9,7 @@ import { Card, CardHeader, Tabs, EmptyState, toast } from '@/components/ui';
 import { formatThaiDate, formatThaiDateTime, formatNumber } from '@/lib/utils/format';
 import { todayBangkok, formatTimeBangkok, daysFromNowISO, startOfTodayBangkokISO, endOfTodayBangkokISO } from '@/lib/utils/date';
 import { AUDIT_ACTION_LABELS } from '@/lib/audit';
+import { useEnabledModules } from '@/lib/tenant/enabled-modules';
 import type { AuditLog } from '@/types/database';
 import {
   Loader2,
@@ -40,6 +41,7 @@ interface StoreSummary {
     pendingWithdrawal: number;
     inStore: number;
     expiringSoon: number;
+    cancelled: number;
   };
   stock: {
     countedToday: number;
@@ -69,7 +71,7 @@ interface AuditLogEntry extends AuditLog {
   } | null;
 }
 
-type FilterCategory = 'all' | 'stock' | 'deposit' | 'borrow' | 'customer' | 'system';
+type FilterCategory = 'all' | 'stock' | 'deposit' | 'borrow' | 'cancelled' | 'customer' | 'system';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -101,12 +103,19 @@ const FILTER_CATEGORIES: Record<FilterCategory, string[]> = {
     'DEPOSIT_REQUEST_APPROVED',
     'DEPOSIT_REQUEST_REJECTED',
     'DEPOSIT_STATUS_CHANGED',
+    'DEPOSIT_BAR_CONFIRMED',
+    'DEPOSIT_BAR_REJECTED',
+    'DEPOSIT_NO_DEPOSIT_CREATED',
     'WITHDRAWAL_COMPLETED',
     'WITHDRAWAL_REJECTED',
     'WITHDRAWAL_REQUESTED',
     'TRANSFER_CREATED',
     'TRANSFER_CONFIRMED',
     'TRANSFER_REJECTED',
+    'ACTION_CARD_CLAIMED',
+    'ACTION_CARD_RELEASED',
+    'ACTION_CARD_COMPLETED',
+    'ACTION_CARD_REJECTED',
   ],
   borrow: [
     'BORROW_REQUESTED',
@@ -114,6 +123,19 @@ const FILTER_CATEGORIES: Record<FilterCategory, string[]> = {
     'BORROW_REJECTED',
     'BORROW_POS_CONFIRMED',
     'BORROW_COMPLETED',
+  ],
+  // Cross-module rejection/cancellation events. Used as a quick lens for
+  // owners to audit what got rejected/reverted across the system.
+  cancelled: [
+    'DEPOSIT_REQUEST_REJECTED',
+    'DEPOSIT_BAR_REJECTED',
+    'WITHDRAWAL_REJECTED',
+    'TRANSFER_REJECTED',
+    'BORROW_REJECTED',
+    'STOCK_REJECTED',
+    'STOCK_BATCH_REJECTED',
+    'ACTION_CARD_REJECTED',
+    'COMMISSION_PAYMENT_CANCELLED',
   ],
   customer: [
     'CUSTOMER_DEPOSIT_REQUEST',
@@ -134,8 +156,24 @@ const FILTER_LABEL_KEYS: Record<FilterCategory, string> = {
   stock: 'filterStock',
   deposit: 'filterDeposit',
   borrow: 'filterBorrow',
+  cancelled: 'filterCancelled',
   customer: 'filterCustomer',
   system: 'filterSystem',
+};
+
+/**
+ * Maps each filter category to the tenant module that gates it.
+ * Filters whose module is disabled in `tenant_modules` are hidden
+ * — same behaviour as overview KPI cards. `null` means "always show".
+ */
+const FILTER_MODULE_GATES: Record<FilterCategory, string | null> = {
+  all: null,
+  stock: 'stock',
+  deposit: 'deposit',
+  borrow: 'borrow',
+  cancelled: null,        // cross-module — visible whenever any gated module is on
+  customer: 'deposit',    // customer flows are deposit/withdraw requests
+  system: null,
 };
 
 const STORE_BORDER_COLORS = [
@@ -423,6 +461,28 @@ export default function ActivityPage() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [filterCategory, setFilterCategory] = useState<FilterCategory>('all');
   const [loadingLogs, setLoadingLogs] = useState(false);
+  // Tenant module allowlist — used to hide filter chips + per-store stat
+  // sections for modules the platform admin has disabled, matching the
+  // overview page behaviour.
+  const enabledModules = useEnabledModules();
+  const moduleEnabled = useCallback(
+    (key: string | null) => (enabledModules && key ? enabledModules.has(key) : true),
+    [enabledModules],
+  );
+  const visibleFilters = useMemo(
+    () =>
+      (Object.keys(FILTER_LABEL_KEYS) as FilterCategory[]).filter((cat) =>
+        moduleEnabled(FILTER_MODULE_GATES[cat]),
+      ),
+    [moduleEnabled],
+  );
+
+  // If the active filter belongs to a now-disabled module, fall back to "all".
+  useEffect(() => {
+    if (!visibleFilters.includes(filterCategory)) {
+      setFilterCategory('all');
+    }
+  }, [visibleFilters, filterCategory]);
 
   // -------------------------------------------------------------------------
   // Fetch stores
@@ -472,6 +532,7 @@ export default function ActivityPage() {
               inStoreRes,
               pendingWithdrawalRes,
               expiringSoonRes,
+              cancelledRes,
               countedTodayRes,
               pendingExplanationRes,
               pendingApprovalRes,
@@ -511,6 +572,13 @@ export default function ActivityPage() {
                 .eq('status', 'in_store')
                 .lte('expiry_date', expiryDateISO)
                 .gte('expiry_date', nowISO),
+
+              // Deposit: cancelled (rejected by bar / cancelled from chat)
+              supabase
+                .from('deposits')
+                .select('*', { count: 'exact', head: true })
+                .eq('store_id', store.id)
+                .eq('status', 'cancelled'),
 
               // Stock: counted today
               supabase
@@ -594,6 +662,7 @@ export default function ActivityPage() {
                 pendingWithdrawal: pendingWithdrawalRes.count || 0,
                 inStore: inStoreRes.count || 0,
                 expiringSoon: expiringSoonRes.count || 0,
+                cancelled: cancelledRes.count || 0,
               },
               stock: {
                 countedToday: countedTodayRes.count || 0,
@@ -832,7 +901,8 @@ export default function ActivityPage() {
                   </span>
                 </div>
 
-                {/* Deposit stats */}
+                {/* Deposit stats — hidden if 'deposit' module is off */}
+                {moduleEnabled('deposit') && (
                 <div className="mb-3">
                   <div className="mb-2 flex items-center gap-1.5">
                     <Wine className="h-3.5 w-3.5 text-emerald-500" />
@@ -840,7 +910,7 @@ export default function ActivityPage() {
                       {t('sectionDeposit')}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                     <StatBox
                       label={t('waitingStaffAccept')}
                       value={summary.deposit.pendingConfirm}
@@ -861,10 +931,17 @@ export default function ActivityPage() {
                       value={summary.deposit.expiringSoon}
                       color={summary.deposit.expiringSoon > 0 ? 'red' : 'gray'}
                     />
+                    <StatBox
+                      label={t('cancelled')}
+                      value={summary.deposit.cancelled}
+                      color={summary.deposit.cancelled > 0 ? 'red' : 'gray'}
+                    />
                   </div>
                 </div>
+                )}
 
-                {/* Stock stats */}
+                {/* Stock stats — hidden if 'stock' module is off */}
+                {moduleEnabled('stock') && (
                 <div className="mb-3">
                   <div className="mb-2 flex items-center gap-1.5">
                     <ClipboardCheck className="h-3.5 w-3.5 text-indigo-500" />
@@ -901,8 +978,10 @@ export default function ActivityPage() {
                     />
                   </div>
                 </div>
+                )}
 
-                {/* Borrow stats */}
+                {/* Borrow stats — hidden if 'borrow' module is off */}
+                {moduleEnabled('borrow') && (
                 <div>
                   <div className="mb-2 flex items-center gap-1.5">
                     <Repeat className="h-3.5 w-3.5 text-teal-500" />
@@ -948,6 +1027,7 @@ export default function ActivityPage() {
                     />
                   </div>
                 </div>
+                )}
               </div>
             ))}
           </div>
@@ -962,7 +1042,7 @@ export default function ActivityPage() {
 
         {/* Category filter chips */}
         <div className="mb-4 flex flex-wrap gap-2">
-          {(Object.keys(FILTER_LABEL_KEYS) as FilterCategory[]).map((cat) => {
+          {visibleFilters.map((cat) => {
             const count = cat === 'all'
               ? auditLogs.length
               : auditLogs.filter((log) => FILTER_CATEGORIES[cat].includes(log.action_type)).length;
