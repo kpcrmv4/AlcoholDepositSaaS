@@ -545,6 +545,44 @@
     "compareCommission": "คอม",
     "compareActiveDeposits": "ฝากอยู่",
     "comparePending": "หมดอายุ",
+    "single": {
+      "kpi": {
+        "depositsThisMonth": "ฝากใหม่เดือนนี้",
+        "withdrawalsThisMonth": "เบิกออกเดือนนี้",
+        "activeDeposits": "ฝากอยู่ในร้าน",
+        "expiringDeposits": "ใกล้หมดอายุ (7 วัน)",
+        "stockChecks": "นับสต๊อกเดือนนี้",
+        "commission": "คอมมิชชั่นเดือนนี้",
+        "vsLastPeriod": "เทียบ 30 วันก่อน",
+        "snapshot": "ขณะนี้",
+        "baht": "บาท"
+      },
+      "calendar": {
+        "heading": "กิจกรรม 30 วันล่าสุด",
+        "subtitle": "จำนวนรายการรับฝากใหม่ต่อวัน",
+        "summary": "รวม {total} รายการ • เฉลี่ย {avg}/วัน • สูงสุด {max}/วัน",
+        "today": "วันนี้",
+        "daysAgo": "{count} วันก่อน",
+        "noActivity": "ยังไม่มีรายการรับฝากใน 30 วันที่ผ่านมา",
+        "legendLess": "น้อย",
+        "legendMore": "มาก"
+      },
+      "actions": {
+        "heading": "ต้องดำเนินการ",
+        "noPending": "ไม่มีรายการที่ต้องดำเนินการ — ทุกอย่างเรียบร้อย",
+        "pendingConfirm": "{count} รายการรอยืนยันรับฝาก",
+        "expiring": "{count} รายการใกล้หมดอายุ",
+        "pendingWithdrawal": "{count} รายการรอเบิก",
+        "pendingTransfer": "{count} รายการรอโอน",
+        "pendingExplanation": "{count} รายการรอชี้แจงสต๊อก",
+        "pendingApproval": "{count} รายการรออนุมัติสต๊อก",
+        "pendingDepositRequest": "{count} คำขอฝากเหล้าจากลูกค้า",
+        "borrowsToReturn": "{count} รายการต้องส่งคืน (ยืมมา)",
+        "borrowsToApprove": "{count} ขอยืม รออนุมัติฝั่งผู้ให้ยืม",
+        "lendsToApprove": "{count} ให้ยืม รออนุมัติ",
+        "lendsToReceive": "{count} รายการรอรับคืน (ให้ยืม)"
+      }
+    },
     "modules": {
       "heading": "โมดูล",
       "stock": {

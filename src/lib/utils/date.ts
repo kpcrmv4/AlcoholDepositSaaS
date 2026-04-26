@@ -10,6 +10,13 @@
  * - Passing to Intl formatters that specify timeZone
  */
 
+import {
+  DEFAULT_STORE_HOURS,
+  currentShiftWindow,
+  parseStoreHours,
+  type StoreHours,
+} from '@/lib/store/hours';
+
 const TZ = 'Asia/Bangkok';
 
 // ---------------------------------------------------------------------------
@@ -231,54 +238,39 @@ export function formatTimeBangkok(date: string | Date): string {
  * @param startHour ชั่วโมงเปิดร้าน (default 12)
  * @param endHour ชั่วโมงปิดร้าน (default 6, ข้ามวัน)
  */
+/**
+ * Compute the current shift's date range (`from`, `to` as YYYY-MM-DD)
+ * for use as default values in date-range pickers / Supabase queries.
+ *
+ * `from` is the business date the shift starts on; `to` is `from + 1 day`
+ * (exclusive upper bound for "this shift's transactions").
+ *
+ * Pass the store's hours (from `fetchStoreHours()` / `parseStoreHours()`)
+ * so overnight shifts (open 11:00 → close 06:00) roll over correctly. With
+ * no argument, falls back to DEFAULT_STORE_HOURS (12:00 → 06:00).
+ */
 export function currentShiftRange(
-  startHour: number = 12,
-  endHour: number = 6,
+  hoursOrStartHour?: StoreHours | number,
+  endHour?: number,
 ): { from: string; to: string } {
-  const now = nowBangkok();
-  const hour = now.getHours();
-
-  // กรณีข้ามวัน: startHour > endHour (เช่น 12:00 - 06:00)
-  const isOvernight = startHour > endHour;
-
-  let shiftDate: Date;
-
-  if (isOvernight) {
-    if (hour >= startHour) {
-      // หลังเปิดร้าน เช่น 20:33 → กะของวันนี้
-      shiftDate = new Date(now);
-    } else if (hour < endHour) {
-      // หลังเที่ยงคืน แต่ร้านยังไม่ปิด เช่น 03:00 → กะของเมื่อวาน
-      shiftDate = new Date(now);
-      shiftDate.setDate(shiftDate.getDate() - 1);
-    } else {
-      // ระหว่างปิดร้านถึงเปิดร้าน เช่น 10:00 → แสดงกะล่าสุด (เมื่อวาน)
-      shiftDate = new Date(now);
-      shiftDate.setDate(shiftDate.getDate() - 1);
-    }
+  // Backwards-compat shim: `currentShiftRange(startHour, endHour)` still works.
+  let hours: StoreHours;
+  if (typeof hoursOrStartHour === 'number') {
+    hours = parseStoreHours({
+      startHour: hoursOrStartHour,
+      startMinute: 0,
+      endHour: endHour ?? DEFAULT_STORE_HOURS.endHour,
+      endMinute: 0,
+    });
   } else {
-    // กรณีไม่ข้ามวัน (เช่น 09:00 - 17:00)
-    if (hour >= startHour) {
-      shiftDate = new Date(now);
-    } else {
-      shiftDate = new Date(now);
-      shiftDate.setDate(shiftDate.getDate() - 1);
-    }
+    hours = hoursOrStartHour ?? DEFAULT_STORE_HOURS;
   }
 
-  const fmt = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
-
-  const from = fmt(shiftDate);
-  const toDate = new Date(shiftDate);
-  toDate.setDate(toDate.getDate() + 1);
-  const to = fmt(toDate);
-
-  return { from, to };
+  const w = currentShiftWindow(hours);
+  const [y, m, d] = w.businessDate.split('-').map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d) + 86400000);
+  const to = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
+  return { from: w.businessDate, to };
 }
 
 /**

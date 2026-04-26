@@ -28,8 +28,8 @@ export function Card({ children, className, padding = 'md' }: CardProps) {
 }
 
 interface CardHeaderProps {
-  title: string;
-  description?: string;
+  title: React.ReactNode;
+  description?: React.ReactNode;
   action?: React.ReactNode;
   className?: string;
 }

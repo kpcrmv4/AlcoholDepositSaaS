@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Hand,
   CheckCircle,
@@ -15,7 +15,14 @@ import {
 import { cn } from '@/lib/utils/cn';
 import { useChatStore } from '@/stores/chat-store';
 import { ActionCardMessage } from './action-card-message';
-import type { ChatMessage } from '@/types/chat';
+import { createClient } from '@/lib/supabase/client';
+import {
+  DEFAULT_STORE_HOURS,
+  currentShiftWindow,
+  fetchStoreHours,
+  formatBangkokShiftEdge,
+  type StoreHours,
+} from '@/lib/store/hours';
 
 interface MyTasksBoardProps {
   roomId: string;
@@ -35,48 +42,33 @@ const TYPE_CONFIG: Record<string, { icon: typeof Wine; label: string }> = {
   transfer_receive: { icon: Truck, label: 'โอนสต๊อก' },
 };
 
-/**
- * Get the current "store shift" window: yesterday 11:00 → today 06:00
- * If current time is before 06:00, shift is from 2 days ago 11:00 → yesterday 06:00 adjusted.
- */
-function getShiftWindow(): { start: Date; end: Date } {
-  const now = new Date();
-  const hour = now.getHours();
-
-  let shiftStart: Date;
-  let shiftEnd: Date;
-
-  if (hour >= 11) {
-    // After 11:00 today → shift is today 11:00 to tomorrow 06:00
-    shiftStart = new Date(now);
-    shiftStart.setHours(11, 0, 0, 0);
-    shiftEnd = new Date(now);
-    shiftEnd.setDate(shiftEnd.getDate() + 1);
-    shiftEnd.setHours(6, 0, 0, 0);
-  } else {
-    // Before 11:00 today (including 00:00-06:00) → shift is yesterday 11:00 to today 06:00
-    shiftStart = new Date(now);
-    shiftStart.setDate(shiftStart.getDate() - 1);
-    shiftStart.setHours(11, 0, 0, 0);
-    shiftEnd = new Date(now);
-    shiftEnd.setHours(6, 0, 0, 0);
-  }
-
-  return { start: shiftStart, end: shiftEnd };
-}
-
-function formatShiftLabel(start: Date, end: Date): string {
-  const fmt = (d: Date) =>
-    `${d.getDate()}/${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:00`;
-  return `${fmt(start)} — ${fmt(end)}`;
-}
-
 export function MyTasksBoard({ roomId, storeId, currentUserId, currentUserName, currentUserRole }: MyTasksBoardProps) {
   const messages = useChatStore((s) => s.messages);
   const [subTab, setSubTab] = useState<SubTab>('claimed');
 
-  const { start: shiftStart, end: shiftEnd } = useMemo(() => getShiftWindow(), []);
-  const shiftLabel = useMemo(() => formatShiftLabel(shiftStart, shiftEnd), [shiftStart, shiftEnd]);
+  // Per-store hours drive the shift window. Default kicks in instantly so
+  // the UI doesn't flash an empty header — it's then replaced once the
+  // store's actual hours load.
+  const [hours, setHours] = useState<StoreHours>(DEFAULT_STORE_HOURS);
+  useEffect(() => {
+    if (!storeId) return;
+    let cancelled = false;
+    fetchStoreHours(createClient(), storeId).then((h) => {
+      if (!cancelled) setHours(h);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId]);
+
+  const { startUTC: shiftStart, endUTC: shiftEnd } = useMemo(
+    () => currentShiftWindow(hours),
+    [hours],
+  );
+  const shiftLabel = useMemo(
+    () => `${formatBangkokShiftEdge(shiftStart)} — ${formatBangkokShiftEdge(shiftEnd)}`,
+    [shiftStart, shiftEnd],
+  );
 
   // Filter: my cards within shift window
   const myCards = useMemo(() => {

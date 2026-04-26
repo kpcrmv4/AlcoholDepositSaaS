@@ -608,6 +608,7 @@ CREATE TABLE store_settings (
   chat_bot_priority_borrow     TEXT NOT NULL DEFAULT 'normal',
   chat_bot_priority_transfer   TEXT NOT NULL DEFAULT 'normal',
   chat_bot_daily_summary_enabled BOOLEAN NOT NULL DEFAULT true,
+  chat_bot_daily_summary_send_time TIME NOT NULL DEFAULT '06:00:00',
 
   -- Print server
   print_server_account_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
@@ -1644,6 +1645,62 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER system_settings_updated_at
   BEFORE UPDATE ON system_settings
   FOR EACH ROW EXECUTE FUNCTION system_settings_touch_updated_at();
+
+-- ─── store_settings: validate daily summary send_time vs business hours ───
+-- send_time must fall outside open hours (after close, before next open)
+-- so the cron summarises a *completed* shift, never the in-progress one.
+-- Mirrors the client-side validator in bot-settings-dialog.tsx and the
+-- server-side fallback in /api/cron/chat-daily-summary.
+CREATE OR REPLACE FUNCTION validate_daily_summary_send_time()
+RETURNS TRIGGER AS $$
+DECLARE
+  open_min  INTEGER;
+  close_min INTEGER;
+  send_min  INTEGER;
+BEGIN
+  IF NOT NEW.chat_bot_daily_summary_enabled THEN
+    RETURN NEW;
+  END IF;
+
+  open_min := COALESCE((NEW.print_server_working_hours->>'startHour')::int, 12) * 60
+            + COALESCE((NEW.print_server_working_hours->>'startMinute')::int, 0);
+  close_min := COALESCE((NEW.print_server_working_hours->>'endHour')::int, 6) * 60
+             + COALESCE((NEW.print_server_working_hours->>'endMinute')::int, 0);
+  send_min := EXTRACT(HOUR FROM NEW.chat_bot_daily_summary_send_time)::int * 60
+            + EXTRACT(MINUTE FROM NEW.chat_bot_daily_summary_send_time)::int;
+
+  IF close_min = open_min THEN
+    RETURN NEW; -- 24h or zero-hour shop — no constraint
+  ELSIF close_min < open_min THEN
+    -- Overnight bar: valid window is [close, open).
+    IF send_min < close_min OR send_min >= open_min THEN
+      RAISE EXCEPTION
+        'chat_bot_daily_summary_send_time (%) must be between close (%) and next open (%) for overnight stores',
+        NEW.chat_bot_daily_summary_send_time, close_min, open_min
+        USING ERRCODE = 'check_violation';
+    END IF;
+  ELSE
+    -- Same-day shop: valid iff send is OUTSIDE [open, close).
+    IF send_min >= open_min AND send_min < close_min THEN
+      RAISE EXCEPTION
+        'chat_bot_daily_summary_send_time (%) must be outside open hours (% – %)',
+        NEW.chat_bot_daily_summary_send_time, open_min, close_min
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER trg_validate_daily_summary_send_time
+  BEFORE INSERT OR UPDATE OF
+    chat_bot_daily_summary_send_time,
+    chat_bot_daily_summary_enabled,
+    print_server_working_hours
+  ON store_settings
+  FOR EACH ROW
+  EXECUTE FUNCTION validate_daily_summary_send_time();
 
 -- ==========================================
 -- ROW LEVEL SECURITY — enable on every table
