@@ -31,7 +31,7 @@ export function SectionOwner() {
 
         <CardSubtitle>⚙ หมวด &quot;ระบบ&quot;</CardSubtitle>
         <MenuItem icon="📣" iconBg="bg-pink-500" name="ประกาศ/โปรโมชั่น" desc="สร้างประกาศถึงลูกค้าและพนักงาน" path="/announcements" />
-        <MenuItem icon="👤" iconBg="bg-orange-500" name="จัดการผู้ใช้" desc="เพิ่ม/แก้ไข/ปิดการใช้งานผู้ใช้, กำหนด Role" path="/users" />
+        <MenuItem icon="👤" iconBg="bg-orange-500" name="จัดการผู้ใช้" desc="เชิญพนักงานใหม่ / สร้างผู้ใช้โดยตรง / กำหนดสิทธิ์ — รวมในตั้งค่า" path="/settings/users" />
         <MenuItem icon="⚙" iconBg="bg-gray-500" name="ตั้งค่า" desc="ตั้งค่าสาขา, LINE, การแจ้งเตือน" path="/settings" />
 
         <ImgPlaceholder icon="🖥" name="img-05-owner-sidebar.png" desc="Sidebar ของ Owner แสดงเมนูทั้งหมด 5 หมวด" />

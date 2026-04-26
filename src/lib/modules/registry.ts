@@ -201,17 +201,9 @@ export const modules: ModuleConfig[] = [
     permission: 'can_manage_settings',
     groupKey: 'moduleGroups.system',
   },
-  {
-    id: 'users',
-    nameKey: 'modules.users.name',
-    descriptionKey: 'modules.users.description',
-    icon: 'user-cog',
-    color: 'orange',
-    href: '/users',
-    roles: ['owner'],
-    permission: 'can_manage_users',
-    groupKey: 'moduleGroups.system',
-  },
+  // 'users' module removed — user management is now part of /settings/users
+  // (invitation + direct-create flows merged into one UI). Permissions per
+  // user are still at /users/[id]/permissions (linked from the same page).
   {
     id: 'settings',
     nameKey: 'modules.settings.name',

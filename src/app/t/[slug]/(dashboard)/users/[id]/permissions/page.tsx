@@ -116,7 +116,7 @@ export default function UserPermissionsPage({
     return (
       <div className="space-y-4">
         <Link
-          href="/users"
+          href="/settings/users"
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
         >
           <ArrowLeft className="h-4 w-4" /> {t('back')}
@@ -145,7 +145,7 @@ export default function UserPermissionsPage({
       {/* Header */}
       <div>
         <Link
-          href="/users"
+          href="/settings/users"
           className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" /> {t('back')}

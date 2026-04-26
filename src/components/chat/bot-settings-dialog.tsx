@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAppStore } from '@/stores/app-store';
+import { useEnabledModules } from '@/lib/tenant/enabled-modules';
 import {
   Modal,
   ModalFooter,
@@ -127,8 +128,12 @@ const PRIORITY_OPTIONS = [
 
 export function BotSettingsDialog({ isOpen, onClose }: BotSettingsDialogProps) {
   const { currentStoreId } = useAppStore();
+  const tenantModules = useEnabledModules();
   const [settings, setSettings] = useState<BotSettings>(DEFAULTS);
   const [storeHours, setStoreHours] = useState<StoreHours>(DEFAULT_STORE_HOURS);
+  // store_features rows for the current store: feature_key → enabled.
+  // Absent row = enabled by default (mirrors is_feature_enabled SQL fn).
+  const [storeFeatures, setStoreFeatures] = useState<Map<string, boolean>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -136,30 +141,64 @@ export function BotSettingsDialog({ isOpen, onClose }: BotSettingsDialogProps) {
     if (!currentStoreId) return;
     setIsLoading(true);
     const supabase = createClient();
-    // Load bot settings + store hours in one query so the validator has
-    // both contexts immediately.
-    const { data } = await supabase
-      .from('store_settings')
-      .select(`${COLUMNS}, print_server_working_hours`)
-      .eq('store_id', currentStoreId)
-      .single();
+    // Bot settings + store hours come from store_settings; store_features
+    // gates which bot sections we render at all.
+    const [{ data: row }, { data: featRows }] = await Promise.all([
+      supabase
+        .from('store_settings')
+        .select(`${COLUMNS}, print_server_working_hours`)
+        .eq('store_id', currentStoreId)
+        .single(),
+      supabase
+        .from('store_features')
+        .select('feature_key, enabled')
+        .eq('store_id', currentStoreId),
+    ]);
 
-    if (data) {
-      const row = data as Partial<BotSettings> & {
+    if (row) {
+      const data = row as Partial<BotSettings> & {
         print_server_working_hours?: unknown;
       };
-      setSettings({ ...DEFAULTS, ...row });
-      setStoreHours(parseStoreHours(row.print_server_working_hours));
+      setSettings({ ...DEFAULTS, ...data });
+      setStoreHours(parseStoreHours(data.print_server_working_hours));
     } else {
       setSettings(DEFAULTS);
       setStoreHours(DEFAULT_STORE_HOURS);
     }
+
+    const featMap = new Map<string, boolean>();
+    for (const f of (featRows ?? []) as { feature_key: string; enabled: boolean }[]) {
+      featMap.set(f.feature_key, f.enabled);
+    }
+    setStoreFeatures(featMap);
+
     setIsLoading(false);
   }, [currentStoreId]);
 
   useEffect(() => {
     if (isOpen) loadSettings();
   }, [isOpen, loadSettings]);
+
+  // A bot section is shown only when *both* the tenant has the underlying
+  // module enabled (platform admin gate) AND the store hasn't explicitly
+  // disabled the feature (per-store override). Tenant set === null means
+  // "no provider mounted" → don't filter on tenant level. Store map
+  // missing a key === enabled by default (matches is_feature_enabled fn).
+  const isFeatureAvailable = useCallback(
+    (key: string): boolean => {
+      const tenantOk = tenantModules ? tenantModules.has(key) : true;
+      const storeOk = storeFeatures.has(key) ? storeFeatures.get(key) === true : true;
+      return tenantOk && storeOk;
+    },
+    [tenantModules, storeFeatures],
+  );
+  // Daily summary needs at least one underlying countable module to make
+  // sense — hide the toggle entirely if every source is off.
+  const showDailySummary = useMemo(
+    () =>
+      ['deposit', 'stock', 'borrow', 'transfer'].some((k) => isFeatureAvailable(k)),
+    [isFeatureAvailable],
+  );
 
   // Live validation of the send time vs store hours.
   const sendTimeError = useMemo(
@@ -228,75 +267,106 @@ export function BotSettingsDialog({ isOpen, onClose }: BotSettingsDialogProps) {
             <p className="mt-1"><strong>ความสำคัญ</strong> — กำหนดลำดับความสำคัญของการ์ด: <span className="text-red-500">เร่งด่วน</span> จะแสดงขอบแดงเด่นชัด, <span>ปกติ</span> แสดงตามปกติ, <span className="text-gray-400">ต่ำ</span> แสดงจางลง</p>
           </div>
 
-          {/* Deposit */}
-          <BotTypeSection
-            icon={<Wine className="h-4 w-4 text-purple-500" />}
-            label="ฝากเหล้า"
-            description="แจ้งเตือนเมื่อมีรายการฝากใหม่"
-            enabled={settings.chat_bot_deposit_enabled}
-            onToggle={() => toggle('chat_bot_deposit_enabled')}
-            timeout={settings.chat_bot_timeout_deposit}
-            onTimeoutChange={(v) => setNumber('chat_bot_timeout_deposit', v)}
-            priority={settings.chat_bot_priority_deposit}
-            onPriorityChange={(v) => setPriority('chat_bot_priority_deposit', v)}
-          />
+          {/* Each section is gated by the underlying module being enabled
+              for this store (tenant_modules ∩ store_features). Hiding
+              avoids confusing owners with toggles that have no source data. */}
 
-          {/* Withdrawal */}
-          <BotTypeSection
-            icon={<GlassWater className="h-4 w-4 text-blue-500" />}
-            label="เบิกเหล้า"
-            description="แจ้งเตือนเมื่อลูกค้าขอเบิก"
-            enabled={settings.chat_bot_withdrawal_enabled}
-            onToggle={() => toggle('chat_bot_withdrawal_enabled')}
-            timeout={settings.chat_bot_timeout_withdrawal}
-            onTimeoutChange={(v) => setNumber('chat_bot_timeout_withdrawal', v)}
-            priority={settings.chat_bot_priority_withdrawal}
-            onPriorityChange={(v) => setPriority('chat_bot_priority_withdrawal', v)}
-          />
+          {/* Deposit */}
+          {isFeatureAvailable('deposit') && (
+            <BotTypeSection
+              icon={<Wine className="h-4 w-4 text-purple-500" />}
+              label="ฝากเหล้า"
+              description="แจ้งเตือนเมื่อมีรายการฝากใหม่"
+              enabled={settings.chat_bot_deposit_enabled}
+              onToggle={() => toggle('chat_bot_deposit_enabled')}
+              timeout={settings.chat_bot_timeout_deposit}
+              onTimeoutChange={(v) => setNumber('chat_bot_timeout_deposit', v)}
+              priority={settings.chat_bot_priority_deposit}
+              onPriorityChange={(v) => setPriority('chat_bot_priority_deposit', v)}
+            />
+          )}
+
+          {/* Withdrawal — same module key as deposit ('ฝาก / เบิก' is one
+              feature in /settings/features). */}
+          {isFeatureAvailable('deposit') && (
+            <BotTypeSection
+              icon={<GlassWater className="h-4 w-4 text-blue-500" />}
+              label="เบิกเหล้า"
+              description="แจ้งเตือนเมื่อลูกค้าขอเบิก"
+              enabled={settings.chat_bot_withdrawal_enabled}
+              onToggle={() => toggle('chat_bot_withdrawal_enabled')}
+              timeout={settings.chat_bot_timeout_withdrawal}
+              onTimeoutChange={(v) => setNumber('chat_bot_timeout_withdrawal', v)}
+              priority={settings.chat_bot_priority_withdrawal}
+              onPriorityChange={(v) => setPriority('chat_bot_priority_withdrawal', v)}
+            />
+          )}
 
           {/* Stock */}
-          <BotTypeSection
-            icon={<Package className="h-4 w-4 text-amber-500" />}
-            label="สต๊อก"
-            description="แจ้งเตือนเมื่อสต๊อกไม่ตรง"
-            enabled={settings.chat_bot_stock_enabled}
-            onToggle={() => toggle('chat_bot_stock_enabled')}
-            timeout={settings.chat_bot_timeout_stock}
-            onTimeoutChange={(v) => setNumber('chat_bot_timeout_stock', v)}
-            priority={settings.chat_bot_priority_stock}
-            onPriorityChange={(v) => setPriority('chat_bot_priority_stock', v)}
-          />
+          {isFeatureAvailable('stock') && (
+            <BotTypeSection
+              icon={<Package className="h-4 w-4 text-amber-500" />}
+              label="สต๊อก"
+              description="แจ้งเตือนเมื่อสต๊อกไม่ตรง"
+              enabled={settings.chat_bot_stock_enabled}
+              onToggle={() => toggle('chat_bot_stock_enabled')}
+              timeout={settings.chat_bot_timeout_stock}
+              onTimeoutChange={(v) => setNumber('chat_bot_timeout_stock', v)}
+              priority={settings.chat_bot_priority_stock}
+              onPriorityChange={(v) => setPriority('chat_bot_priority_stock', v)}
+            />
+          )}
 
           {/* Borrow */}
-          <BotTypeSection
-            icon={<ArrowLeftRight className="h-4 w-4 text-emerald-500" />}
-            label="ยืมสินค้า"
-            description="แจ้งเตือนเมื่อมีคำขอยืมข้ามสาขา"
-            enabled={settings.chat_bot_borrow_enabled}
-            onToggle={() => toggle('chat_bot_borrow_enabled')}
-            timeout={settings.chat_bot_timeout_borrow}
-            onTimeoutChange={(v) => setNumber('chat_bot_timeout_borrow', v)}
-            priority={settings.chat_bot_priority_borrow}
-            onPriorityChange={(v) => setPriority('chat_bot_priority_borrow', v)}
-          />
+          {isFeatureAvailable('borrow') && (
+            <BotTypeSection
+              icon={<ArrowLeftRight className="h-4 w-4 text-emerald-500" />}
+              label="ยืมสินค้า"
+              description="แจ้งเตือนเมื่อมีคำขอยืมข้ามสาขา"
+              enabled={settings.chat_bot_borrow_enabled}
+              onToggle={() => toggle('chat_bot_borrow_enabled')}
+              timeout={settings.chat_bot_timeout_borrow}
+              onTimeoutChange={(v) => setNumber('chat_bot_timeout_borrow', v)}
+              priority={settings.chat_bot_priority_borrow}
+              onPriorityChange={(v) => setPriority('chat_bot_priority_borrow', v)}
+            />
+          )}
 
           {/* Transfer */}
-          <BotTypeSection
-            icon={<Truck className="h-4 w-4 text-orange-500" />}
-            label="โอนสต๊อก"
-            description="แจ้งเตือนเมื่อมีการโอนเข้าคลังกลาง"
-            enabled={settings.chat_bot_transfer_enabled}
-            onToggle={() => toggle('chat_bot_transfer_enabled')}
-            timeout={settings.chat_bot_timeout_transfer}
-            onTimeoutChange={(v) => setNumber('chat_bot_timeout_transfer', v)}
-            priority={settings.chat_bot_priority_transfer}
-            onPriorityChange={(v) => setPriority('chat_bot_priority_transfer', v)}
-          />
+          {isFeatureAvailable('transfer') && (
+            <BotTypeSection
+              icon={<Truck className="h-4 w-4 text-orange-500" />}
+              label="โอนสต๊อก"
+              description="แจ้งเตือนเมื่อมีการโอนเข้าคลังกลาง"
+              enabled={settings.chat_bot_transfer_enabled}
+              onToggle={() => toggle('chat_bot_transfer_enabled')}
+              timeout={settings.chat_bot_timeout_transfer}
+              onTimeoutChange={(v) => setNumber('chat_bot_timeout_transfer', v)}
+              priority={settings.chat_bot_priority_transfer}
+              onPriorityChange={(v) => setPriority('chat_bot_priority_transfer', v)}
+            />
+          )}
 
-          {/* Divider */}
-          <div className="border-t border-gray-200 dark:border-gray-700" />
+          {/* If everything got hidden, give the owner a hint instead of
+              showing a blank dialog. */}
+          {!isFeatureAvailable('deposit') &&
+            !isFeatureAvailable('stock') &&
+            !isFeatureAvailable('borrow') &&
+            !isFeatureAvailable('transfer') &&
+            !showDailySummary && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                สาขานี้ไม่มีโมดูลที่บอทรองรับเปิดอยู่ — เปิดโมดูลก่อนใช้งานบอทแชท
+              </div>
+            )}
+
+          {/* Divider — only meaningful when there's at least one section
+              above AND the daily-summary card below. */}
+          {showDailySummary && (
+            <div className="border-t border-gray-200 dark:border-gray-700" />
+          )}
 
           {/* Daily Summary */}
+          {showDailySummary && (
           <div className="rounded-xl border border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-3">
@@ -349,6 +419,7 @@ export function BotSettingsDialog({ isOpen, onClose }: BotSettingsDialogProps) {
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
