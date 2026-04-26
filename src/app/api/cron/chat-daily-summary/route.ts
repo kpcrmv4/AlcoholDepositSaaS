@@ -4,16 +4,22 @@
  * Cron job: ส่งสรุปประจำวันเข้าห้องแชทสาขา
  * รวม: ฝากเหล้า, เบิกเหล้า, สต๊อก, ยืมสินค้า
  *
- * Schedule: see vercel.json. The window of "yesterday's business day" is
- * derived per-store from each store's configured hours so a bar that
- * closes at 03:00 doesn't have its 02:30 deposits dropped from the count.
+ * Schedule: hourly (see vercel.json). On each tick, only stores whose
+ * `chat_bot_daily_summary_send_time` falls in the current Bangkok hour
+ * are processed — this lets each branch pick its own send time without
+ * needing one cron entry per branch. The "business day just ended"
+ * window is derived per-store from each store's configured hours.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { sendBotMessage } from '@/lib/chat/bot';
 import { getChatBotSettings } from '@/lib/chat/bot-settings';
-import { fetchStoreHours, currentShiftWindow } from '@/lib/store/hours';
+import {
+  bangkokParts,
+  fetchStoreHours,
+  currentShiftWindow,
+} from '@/lib/store/hours';
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -23,31 +29,63 @@ export async function GET(request: NextRequest) {
 
   const supabase = createServiceClient();
 
-  // Get all active stores
-  const { data: stores } = await supabase
-    .from('stores')
-    .select('id, store_name')
-    .eq('active', true);
+  // Pick stores whose configured send time falls in the current Bangkok
+  // hour. The TIME column is half-open at the second level — to allow
+  // any minute within the same hour we filter to [HH:00, HH+1:00).
+  const bk = bangkokParts();
+  const hourStart = `${String(bk.hour).padStart(2, '0')}:00:00`;
+  const hourEnd = `${String((bk.hour + 1) % 24).padStart(2, '0')}:00:00`;
 
-  if (!stores || stores.length === 0) {
-    return NextResponse.json({ status: 'no stores' });
+  // Find stores ready to receive their summary right now. Use a join
+  // through store_settings so we only fetch the rows we'll act on.
+  let storeQuery = supabase
+    .from('store_settings')
+    .select('store_id, chat_bot_daily_summary_send_time, stores!inner(id, store_name, active)')
+    .eq('chat_bot_daily_summary_enabled', true)
+    .eq('stores.active', true)
+    .gte('chat_bot_daily_summary_send_time', hourStart);
+  // Wrapping past midnight (HH=23 → HH+1=24/00): the SQL range degenerates,
+  // so just check >= hourStart in that case.
+  if (hourEnd !== '00:00:00') {
+    storeQuery = storeQuery.lt('chat_bot_daily_summary_send_time', hourEnd);
   }
+
+  const { data: rows, error: storesErr } = await storeQuery;
+  if (storesErr) {
+    console.error('[Daily Summary] store query failed', storesErr);
+    return NextResponse.json({ error: storesErr.message }, { status: 500 });
+  }
+  if (!rows || rows.length === 0) {
+    return NextResponse.json({ status: 'no stores in this hour', hour: bk.hour });
+  }
+
+  // Flatten: PostgREST returns the joined `stores` as a single object on
+  // !inner joins, but the Supabase type system can't always tell — narrow
+  // it explicitly here. The cast bypasses stale generated types that
+  // don't yet know about chat_bot_daily_summary_send_time.
+  type Joined = {
+    store_id: string;
+    stores: { id: string; store_name: string } | { id: string; store_name: string }[] | null;
+  };
+  const stores: Array<{ id: string; store_name: string }> = (rows as unknown as Joined[])
+    .map((r) => (Array.isArray(r.stores) ? r.stores[0] : r.stores))
+    .filter((s): s is { id: string; store_name: string } => !!s && !!s.id);
 
   const results: Array<{ store: string; sent: boolean }> = [];
 
   for (const store of stores) {
     try {
-      // Check if daily summary is enabled for this store
+      // Settings already filtered by the query, but re-load here so we
+      // can grab timeouts/priorities consistently with other call sites.
       const botSettings = await getChatBotSettings(store.id);
       if (!botSettings.chat_bot_daily_summary_enabled) {
         results.push({ store: store.store_name, sent: false });
         continue;
       }
 
-      // Per-store "business day just ended" window. The cron is expected
-      // to fire shortly after the store closes; `currentShiftWindow` gives
-      // us the most-recently-completed shift (its endUTC is in the past
-      // by the time we arrive here).
+      // Per-store "business day just ended" window. With send_time set
+      // to occur after close, currentShiftWindow returns the most-
+      // recently-completed shift.
       const hours = await fetchStoreHours(supabase, store.id);
       const window = currentShiftWindow(hours);
       const startUTC = window.startUTC.toISOString();

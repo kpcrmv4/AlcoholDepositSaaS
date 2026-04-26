@@ -210,7 +210,6 @@ export function currentShiftWindow(
   const bk = bangkokParts(at);
   const currentMinutes = bk.hour * 60 + bk.minute;
   const startMinutes = hours.startHour * 60 + hours.startMinute;
-  const endMinutes = hours.endHour * 60 + hours.endMinute;
 
   let bizY = bk.year;
   let bizM = bk.month;

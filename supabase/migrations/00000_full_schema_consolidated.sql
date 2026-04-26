@@ -608,6 +608,7 @@ CREATE TABLE store_settings (
   chat_bot_priority_borrow     TEXT NOT NULL DEFAULT 'normal',
   chat_bot_priority_transfer   TEXT NOT NULL DEFAULT 'normal',
   chat_bot_daily_summary_enabled BOOLEAN NOT NULL DEFAULT true,
+  chat_bot_daily_summary_send_time TIME NOT NULL DEFAULT '06:00:00',
 
   -- Print server
   print_server_account_id UUID REFERENCES profiles(id) ON DELETE SET NULL,

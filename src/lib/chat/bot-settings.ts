@@ -24,6 +24,8 @@ export interface ChatBotSettings {
   chat_bot_priority_borrow: 'urgent' | 'normal' | 'low';
   chat_bot_priority_transfer: 'urgent' | 'normal' | 'low';
   chat_bot_daily_summary_enabled: boolean;
+  /** When to send the daily summary, as Bangkok-local "HH:MM:SS". */
+  chat_bot_daily_summary_send_time: string;
 }
 
 const DEFAULTS: ChatBotSettings = {
@@ -43,6 +45,7 @@ const DEFAULTS: ChatBotSettings = {
   chat_bot_priority_borrow: 'normal',
   chat_bot_priority_transfer: 'normal',
   chat_bot_daily_summary_enabled: true,
+  chat_bot_daily_summary_send_time: '06:00:00',
 };
 
 const SETTINGS_COLUMNS = Object.keys(DEFAULTS).join(', ');
