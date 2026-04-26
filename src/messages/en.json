@@ -1295,6 +1295,7 @@
       "statusExpired": "Expired",
       "statusTransferPending": "Pending HQ Transfer",
       "statusTransferredOut": "Transferred to HQ",
+      "statusCancelled": "Cancelled",
       "actions": "Actions",
       "confirmReceive": "Confirm Receive",
       "rejectDeposit": "Reject Deposit",

@@ -391,8 +391,9 @@ export default function BarApprovalPage() {
       const { error } = await supabase
         .from('deposits')
         .update({
-          status: 'expired',
-          remaining_qty: 0,
+          status: 'cancelled',
+          cancelled_by: user.id,
+          cancelled_at: new Date().toISOString(),
           notes: updatedNotes,
         })
         .eq('id', deposit.id);
@@ -406,7 +407,7 @@ export default function BarApprovalPage() {
         record_id: deposit.id,
         old_value: { status: 'pending_confirm' },
         new_value: {
-          status: 'expired',
+          status: 'cancelled',
           reason: reason.trim(),
           deposit_code: deposit.deposit_code,
           customer_name: deposit.customer_name,
