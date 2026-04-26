@@ -1053,6 +1053,7 @@
       "pendingConfirm": "Pending Confirm",
       "expired": "Expired",
       "transferPending": "Pending HQ Transfer",
+      "cancelled": "Rejected/Cancelled",
       "vip": "VIP"
     },
     "table": {

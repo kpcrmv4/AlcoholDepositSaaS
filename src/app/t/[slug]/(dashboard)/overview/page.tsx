@@ -791,8 +791,10 @@ export default function OverviewPage() {
       const grpLcQ = isOwner ? supabase.from('manual_counts').select('store_id, count_date').order('count_date', { ascending: false }).limit(2000) : null;
 
       // Month-scoped grouped metrics (for the per-store comparison chart).
+      // Exclude cancelled deposits — a rejected/cancelled deposit shouldn't
+      // count toward the store's monthly deposit volume.
       const monthStartISO = `${commissionMonthStart}T00:00:00+07:00`;
-      const grpMoDepQ = isOwner ? supabase.from('deposits').select('store_id').gte('created_at', monthStartISO) : null;
+      const grpMoDepQ = isOwner ? supabase.from('deposits').select('store_id').gte('created_at', monthStartISO).neq('status', 'cancelled') : null;
       const grpMoWdQ = isOwner ? supabase.from('deposits').select('store_id').eq('status', 'withdrawn').gte('created_at', monthStartISO) : null;
       const grpMoScQ = isOwner ? supabase.from('manual_counts').select('store_id').gte('created_at', monthStartISO) : null;
 
