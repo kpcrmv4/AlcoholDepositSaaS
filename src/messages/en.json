@@ -545,6 +545,44 @@
     "compareCommission": "Commission",
     "compareActiveDeposits": "In store",
     "comparePending": "Expired",
+    "single": {
+      "kpi": {
+        "depositsThisMonth": "New deposits this month",
+        "withdrawalsThisMonth": "Withdrawals this month",
+        "activeDeposits": "Currently in store",
+        "expiringDeposits": "Expiring (7 days)",
+        "stockChecks": "Stock checks this month",
+        "commission": "Commission this month",
+        "vsLastPeriod": "vs prev 30 days",
+        "snapshot": "Right now",
+        "baht": "THB"
+      },
+      "calendar": {
+        "heading": "Activity over the last 30 days",
+        "subtitle": "New deposits per day",
+        "summary": "{total} total • {avg}/day avg • peak {max}/day",
+        "today": "Today",
+        "daysAgo": "{count} days ago",
+        "noActivity": "No new deposits in the last 30 days",
+        "legendLess": "Less",
+        "legendMore": "More"
+      },
+      "actions": {
+        "heading": "Needs attention",
+        "noPending": "Nothing pending — you're all caught up",
+        "pendingConfirm": "{count} deposits awaiting bar confirmation",
+        "expiring": "{count} deposits expiring soon",
+        "pendingWithdrawal": "{count} pending withdrawals",
+        "pendingTransfer": "{count} pending transfers",
+        "pendingExplanation": "{count} stock items pending explanation",
+        "pendingApproval": "{count} stock items pending approval",
+        "pendingDepositRequest": "{count} customer deposit requests",
+        "borrowsToReturn": "{count} borrowed items to return",
+        "borrowsToApprove": "{count} borrow requests awaiting lender approval",
+        "lendsToApprove": "{count} lend requests awaiting your approval",
+        "lendsToReceive": "{count} lent items awaiting return"
+      }
+    },
     "modules": {
       "heading": "Modules",
       "stock": {

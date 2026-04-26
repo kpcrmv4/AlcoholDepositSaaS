@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { TenantLink as Link } from '@/lib/tenant/link';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
@@ -12,6 +12,7 @@ import {
   daysFromNowISO,
   daysAgoBangkokISO,
   startOfTodayBangkokISO,
+  nowBangkok,
 } from '@/lib/utils/date';
 import { Card, CardHeader, toast } from '@/components/ui';
 import { useEnabledModules } from '@/lib/tenant/enabled-modules';
@@ -61,6 +62,11 @@ import {
   ChevronUp,
   BarChart2,
   Hourglass,
+  Calendar,
+  ListChecks,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -632,6 +638,516 @@ const COLOR_MAP: Record<
 };
 
 // ---------------------------------------------------------------------------
+// Single-branch helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Bucket rows by Bangkok-local calendar day.
+ * Returns an array of length `days` where index 0 = (today - days + 1) and
+ * index `days - 1` = today. Bucketing uses the row's `created_at` converted
+ * to its Bangkok wall-clock date (YYYY-MM-DD), so a deposit made at 23:30
+ * Bangkok on day N lands in day N's bucket regardless of UTC offset.
+ */
+function bucketByBangkokDay<T extends { created_at: string }>(
+  rows: ReadonlyArray<T> | null | undefined,
+  days: number,
+  predicate?: (row: T) => boolean,
+): number[] {
+  const buckets = new Array<number>(days).fill(0);
+  if (!rows || rows.length === 0) return buckets;
+
+  // Build a key → index map for the last `days` Bangkok-local dates.
+  const dateToIdx = new Map<string, number>();
+  const today = nowBangkok();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (days - 1 - i));
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    dateToIdx.set(`${y}-${m}-${day}`, i);
+  }
+
+  // sv-SE locale formats as "YYYY-MM-DD" — perfect for our key.
+  const fmt = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  for (const r of rows) {
+    if (predicate && !predicate(r)) continue;
+    const key = fmt.format(new Date(r.created_at));
+    const idx = dateToIdx.get(key);
+    if (idx !== undefined) buckets[idx]++;
+  }
+  return buckets;
+}
+
+/**
+ * Tiny SVG sparkline. Renders the trailing `points.length` values as a
+ * polyline normalized to the box. Used inside KPI cards in the
+ * single-branch overview — purely decorative, so we skip axes/labels.
+ */
+function Sparkline({
+  points,
+  color = '#6366f1',
+  width = 80,
+  height = 22,
+}: {
+  points: number[];
+  color?: string;
+  width?: number;
+  height?: number;
+}) {
+  if (points.length === 0) return null;
+  const max = Math.max(...points, 1);
+  const stepX = points.length > 1 ? width / (points.length - 1) : 0;
+  const path = points
+    .map((v, i) => {
+      const x = i * stepX;
+      const y = height - (v / max) * (height - 2) - 1;
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+  return (
+    <svg width={width} height={height} className="overflow-visible" aria-hidden>
+      <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Trend arrow badge — shared by the single-branch KPI cards. */
+function SingleTrendBadge({ value, label }: { value: number; label?: string }) {
+  if (!Number.isFinite(value)) return null;
+  const rounded = Math.round(value);
+  const isFlat = rounded === 0;
+  const Icon = isFlat ? Minus : rounded > 0 ? TrendingUp : TrendingDown;
+  const color = isFlat
+    ? 'text-gray-500 dark:text-gray-400'
+    : rounded > 0
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : 'text-rose-600 dark:text-rose-400';
+  return (
+    <span
+      className={cn('flex items-center gap-1 text-[11px] font-medium', color)}
+      title={label}
+    >
+      <Icon className="h-3 w-3" />
+      {isFlat ? '0%' : `${rounded > 0 ? '+' : ''}${rounded}%`}
+    </span>
+  );
+}
+
+/**
+ * Compact dashboard rendered when the tenant has exactly one non-HQ branch.
+ * Replaces the multi-branch comparison/heatmap/per-branch-card stack with a
+ * single-store layout: 4 KPI cards, a 30-day calendar heatmap of new
+ * deposits, and a flat action-items list scoped to the one branch.
+ *
+ * Why: with one branch, the comparison chart shows one bar per metric and
+ * the branch-card section just repeats the store name — both add visual
+ * noise without adding signal.
+ */
+function SingleBranchOverview({
+  store,
+  depositsTrend,
+  withdrawalsTrend,
+  stockChecksTrend,
+  dailyDeposits,
+  dailyWithdrawals,
+  moduleEnabled,
+}: {
+  store: StoreStatus;
+  depositsTrend: number;
+  withdrawalsTrend: number;
+  stockChecksTrend: number;
+  dailyDeposits: number[];
+  dailyWithdrawals: number[];
+  moduleEnabled: (key: string) => boolean;
+}) {
+  const t = useTranslations('overview');
+
+  type ColorKey = keyof typeof COLOR_MAP;
+  type Kpi = {
+    key: string;
+    label: string;
+    value: number;
+    valueLabel?: string;
+    trend?: number;
+    sparkline?: number[];
+    sparkColor?: string;
+    icon: LucideIcon;
+    color: ColorKey;
+    snapshot?: boolean;
+    warning?: boolean;
+  };
+
+  const kpis: Kpi[] = [];
+  if (moduleEnabled('deposit')) {
+    kpis.push(
+      {
+        key: 'depositsThisMonth',
+        label: t('single.kpi.depositsThisMonth'),
+        value: store.depositsThisMonth,
+        trend: depositsTrend,
+        sparkline: dailyDeposits.slice(-7),
+        sparkColor: '#10b981',
+        icon: Wine,
+        color: 'emerald',
+      },
+      {
+        key: 'withdrawalsThisMonth',
+        label: t('single.kpi.withdrawalsThisMonth'),
+        value: store.withdrawalsThisMonth,
+        trend: withdrawalsTrend,
+        sparkline: dailyWithdrawals.slice(-7),
+        sparkColor: '#6366f1',
+        icon: HandCoins,
+        color: 'indigo',
+      },
+      {
+        key: 'activeDeposits',
+        label: t('single.kpi.activeDeposits'),
+        value: store.activeDeposits,
+        snapshot: true,
+        icon: Package,
+        color: 'blue',
+      },
+      {
+        key: 'expiringDeposits',
+        label: t('single.kpi.expiringDeposits'),
+        value: store.expiringDeposits,
+        snapshot: true,
+        warning: store.expiringDeposits > 0,
+        icon: CalendarClock,
+        color: store.expiringDeposits > 0 ? 'amber' : 'gray',
+      },
+    );
+  }
+  if (moduleEnabled('stock') && !moduleEnabled('deposit')) {
+    kpis.push({
+      key: 'stockChecks',
+      label: t('single.kpi.stockChecks'),
+      value: store.stockChecksThisMonth,
+      trend: stockChecksTrend,
+      icon: ClipboardCheck,
+      color: 'violet',
+    });
+  }
+  if (moduleEnabled('commission')) {
+    kpis.push({
+      key: 'commission',
+      label: t('single.kpi.commission'),
+      value: store.commissionThisMonth,
+      valueLabel: `฿${formatNumber(Math.round(store.commissionThisMonth))}`,
+      icon: HandCoins,
+      color: 'rose',
+    });
+  }
+
+  const calendar = useMemo(() => {
+    const total = dailyDeposits.reduce((s, v) => s + v, 0);
+    const max = dailyDeposits.length > 0 ? Math.max(...dailyDeposits) : 0;
+    const avg = dailyDeposits.length > 0 ? total / dailyDeposits.length : 0;
+    return { total, max, avg };
+  }, [dailyDeposits]);
+
+  type ActionItem = {
+    key: string;
+    href: string;
+    label: string;
+    color: ColorKey;
+    icon: LucideIcon;
+  };
+  const actions: ActionItem[] = [];
+  if (moduleEnabled('deposit')) {
+    if (store.pendingConfirm > 0)
+      actions.push({
+        key: 'pendingConfirm',
+        href: '/deposit',
+        label: t('single.actions.pendingConfirm', { count: store.pendingConfirm }),
+        color: 'amber',
+        icon: Hourglass,
+      });
+    if (store.expiringDeposits > 0)
+      actions.push({
+        key: 'expiring',
+        href: '/deposit',
+        label: t('single.actions.expiring', { count: store.expiringDeposits }),
+        color: 'amber',
+        icon: CalendarClock,
+      });
+    if (store.pendingWithdrawals > 0)
+      actions.push({
+        key: 'pendingWithdrawal',
+        href: '/deposit',
+        label: t('single.actions.pendingWithdrawal', { count: store.pendingWithdrawals }),
+        color: 'rose',
+        icon: ArrowDownRight,
+      });
+    if (store.pendingDeposits > 0)
+      actions.push({
+        key: 'pendingDepositRequest',
+        href: '/deposit',
+        label: t('single.actions.pendingDepositRequest', { count: store.pendingDeposits }),
+        color: 'blue',
+        icon: PlusCircle,
+      });
+  }
+  if (moduleEnabled('stock')) {
+    if (store.pendingExplanations > 0)
+      actions.push({
+        key: 'pendingExplanation',
+        href: '/stock/comparison',
+        label: t('single.actions.pendingExplanation', { count: store.pendingExplanations }),
+        color: 'rose',
+        icon: AlertTriangle,
+      });
+    if (store.pendingApprovals > 0)
+      actions.push({
+        key: 'pendingApproval',
+        href: '/stock/approval',
+        label: t('single.actions.pendingApproval', { count: store.pendingApprovals }),
+        color: 'amber',
+        icon: FileCheck,
+      });
+  }
+  if (moduleEnabled('transfer')) {
+    if (store.pendingTransfers > 0)
+      actions.push({
+        key: 'pendingTransfer',
+        href: '/deposit',
+        label: t('single.actions.pendingTransfer', { count: store.pendingTransfers }),
+        color: 'blue',
+        icon: ArrowRightLeft,
+      });
+  }
+  if (moduleEnabled('borrow')) {
+    if (store.borrowsToReturn > 0)
+      actions.push({
+        key: 'borrowsToReturn',
+        href: '/borrow',
+        label: t('single.actions.borrowsToReturn', { count: store.borrowsToReturn }),
+        color: 'violet',
+        icon: Repeat,
+      });
+    if (store.borrowsToApprove > 0)
+      actions.push({
+        key: 'borrowsToApprove',
+        href: '/borrow',
+        label: t('single.actions.borrowsToApprove', { count: store.borrowsToApprove }),
+        color: 'amber',
+        icon: FileCheck,
+      });
+    if (store.lendsToApprove > 0)
+      actions.push({
+        key: 'lendsToApprove',
+        href: '/borrow?tab=incoming',
+        label: t('single.actions.lendsToApprove', { count: store.lendsToApprove }),
+        color: 'amber',
+        icon: FileCheck,
+      });
+    if (store.lendsToReceive > 0)
+      actions.push({
+        key: 'lendsToReceive',
+        href: '/borrow?tab=incoming',
+        label: t('single.actions.lendsToReceive', { count: store.lendsToReceive }),
+        color: 'emerald',
+        icon: Repeat,
+      });
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {kpis.map((k) => {
+          const colors = COLOR_MAP[k.color] || COLOR_MAP.gray;
+          const Icon = k.icon;
+          const sparkHasData = !!k.sparkline && k.sparkline.some((v) => v > 0);
+          return (
+            <div
+              key={k.key}
+              className={cn(
+                'rounded-xl bg-white p-4 shadow-sm ring-1 dark:bg-gray-800',
+                k.warning
+                  ? 'ring-amber-200 dark:ring-amber-800'
+                  : 'ring-gray-200 dark:ring-gray-700',
+              )}
+            >
+              <div className="flex items-start justify-between">
+                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {k.label}
+                </div>
+                <div
+                  className={cn(
+                    'flex h-7 w-7 items-center justify-center rounded-lg',
+                    colors.iconBg,
+                  )}
+                >
+                  <Icon className={cn('h-4 w-4', colors.text)} />
+                </div>
+              </div>
+              <div className="mt-2 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">
+                {k.valueLabel ?? formatNumber(k.value)}
+              </div>
+              <div className="mt-1 flex h-5 items-center justify-between gap-2">
+                {k.trend !== undefined ? (
+                  <SingleTrendBadge value={k.trend} label={t('single.kpi.vsLastPeriod')} />
+                ) : k.snapshot ? (
+                  <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                    {t('single.kpi.snapshot')}
+                  </span>
+                ) : (
+                  <span />
+                )}
+                {sparkHasData && (
+                  <Sparkline
+                    points={k.sparkline as number[]}
+                    color={k.sparkColor || '#6366f1'}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 30-day calendar heatmap of new deposits */}
+      {moduleEnabled('deposit') && (
+        <Card padding="none">
+          <CardHeader
+            title={
+              <span className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-indigo-500" />
+                {t('single.calendar.heading')}
+              </span>
+            }
+            description={t('single.calendar.subtitle')}
+          />
+          <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+            {dailyDeposits.length === 0 || calendar.total === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+                {t('single.calendar.noActivity')}
+              </p>
+            ) : (
+              <>
+                <div className="flex items-end gap-1 overflow-x-auto pb-1">
+                  {dailyDeposits.map((v, i) => {
+                    const intensity = calendar.max > 0 ? v / calendar.max : 0;
+                    const isToday = i === dailyDeposits.length - 1;
+                    const daysAgoCount = dailyDeposits.length - 1 - i;
+                    return (
+                      <div
+                        key={i}
+                        className={cn(
+                          'h-9 w-3 shrink-0 rounded-sm transition-colors',
+                          v === 0 && 'bg-gray-100 dark:bg-gray-700/40',
+                          isToday &&
+                            'ring-2 ring-indigo-400 ring-offset-1 dark:ring-offset-gray-800',
+                        )}
+                        style={
+                          v > 0
+                            ? {
+                                backgroundColor: `rgba(99, 102, 241, ${0.25 + intensity * 0.75})`,
+                              }
+                            : undefined
+                        }
+                        title={`${
+                          isToday
+                            ? t('single.calendar.today')
+                            : t('single.calendar.daysAgo', { count: daysAgoCount })
+                        }: ${v}`}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span>
+                    {t('single.calendar.summary', {
+                      total: formatNumber(calendar.total),
+                      avg: calendar.avg.toFixed(1),
+                      max: formatNumber(calendar.max),
+                    })}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span>{t('single.calendar.legendLess')}</span>
+                    {[0.25, 0.5, 0.75, 1].map((op) => (
+                      <div
+                        key={op}
+                        className="h-3 w-3 rounded-sm"
+                        style={{ backgroundColor: `rgba(99, 102, 241, ${op})` }}
+                      />
+                    ))}
+                    <span>{t('single.calendar.legendMore')}</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Action items — replaces the per-branch card. We hide zero-count
+          rows entirely instead of dimming them; with one branch this is the
+          actionable to-do list, not a comparison table. */}
+      <Card padding="none">
+        <CardHeader
+          title={
+            <span className="flex items-center gap-1.5">
+              <ListChecks className="h-4 w-4 text-amber-500" />
+              {t('single.actions.heading')}
+            </span>
+          }
+        />
+        {actions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
+              <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {t('single.actions.noPending')}
+            </p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+            {actions.map((a) => {
+              const colors = COLOR_MAP[a.color] || COLOR_MAP.gray;
+              const Icon = a.icon;
+              return (
+                <li key={a.key}>
+                  <Link
+                    href={a.href}
+                    className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span
+                        className={cn(
+                          'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                          colors.iconBg,
+                        )}
+                      >
+                        <Icon className={cn('h-4 w-4', colors.text)} />
+                      </span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                        {a.label}
+                      </span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-gray-400" />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -665,6 +1181,11 @@ export default function OverviewPage() {
   });
   const [activities, setActivities] = useState<AuditLogEntry[]>([]);
   const [storeStatuses, setStoreStatuses] = useState<StoreStatus[]>([]);
+  // 30-day daily activity for the single-branch render path.
+  // Fetched lazily once we know storeStatuses.length === 1 to avoid
+  // pulling per-row history for tenants with many branches.
+  const [dailyDeposits, setDailyDeposits] = useState<number[]>([]);
+  const [dailyWithdrawals, setDailyWithdrawals] = useState<number[]>([]);
   // Per-store-card expansion state (owner view). Collapsed by default — users
   // see a lightweight header + badges and click to reveal full metric breakdown.
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
@@ -1041,7 +1562,46 @@ export default function OverviewPage() {
     fetchData();
   }, [fetchData]);
 
-
+  // Single-branch timeseries: fetch raw deposits from the last 30 days for
+  // the one store and bucket client-side. Skipped for multi-branch tenants
+  // (the comparison/heatmap views don't need it).
+  const singleStoreId =
+    isOwner && storeStatuses.length === 1 && !storeStatuses[0].isCentral
+      ? storeStatuses[0].id
+      : null;
+  useEffect(() => {
+    if (!singleStoreId) {
+      setDailyDeposits([]);
+      setDailyWithdrawals([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const since = daysAgoBangkokISO(30);
+      const { data: rows, error } = await supabase
+        .from('deposits')
+        .select('created_at, status')
+        .eq('store_id', singleStoreId)
+        .gte('created_at', since);
+      if (cancelled) return;
+      if (error) {
+        console.error('Single-branch timeseries fetch failed:', error);
+        return;
+      }
+      type Row = { created_at: string; status: string | null };
+      const safe = (rows || []) as Row[];
+      setDailyDeposits(
+        bucketByBangkokDay(safe, 30, (r) => r.status !== 'cancelled'),
+      );
+      setDailyWithdrawals(
+        bucketByBangkokDay(safe, 30, (r) => r.status === 'withdrawn'),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [singleStoreId]);
 
   // -----------------------------------------------------------------------
   // Loading state
@@ -1060,6 +1620,12 @@ export default function OverviewPage() {
   // -----------------------------------------------------------------------
 
   const today = formatThaiDate(new Date());
+  // Single-branch tenants (one active non-HQ store) get a compact dashboard
+  // instead of the multi-branch comparison/heatmap/per-card stack — see
+  // SingleBranchOverview for rationale.
+  const showSingleBranch =
+    isOwner && storeStatuses.length === 1 && !storeStatuses[0].isCentral;
+  const showMultiBranch = isOwner && storeStatuses.length > 0 && !showSingleBranch;
 
   return (
     <div className="space-y-6">
@@ -1085,9 +1651,22 @@ export default function OverviewPage() {
 
 
 
+      {/* ---- Single-branch view ---- */}
+      {showSingleBranch && (
+        <SingleBranchOverview
+          store={storeStatuses[0]}
+          depositsTrend={data.depositsTrend}
+          withdrawalsTrend={data.withdrawalsTrend}
+          stockChecksTrend={data.stockChecksTrend}
+          dailyDeposits={dailyDeposits}
+          dailyWithdrawals={dailyWithdrawals}
+          moduleEnabled={moduleEnabled}
+        />
+      )}
+
       {/* ---- Per-Store Status (Owner only) ---- */}
       {/* ---- Per-store comparison chart (owner only) ---- */}
-      {isOwner && storeStatuses.length > 0 && (() => {
+      {showMultiBranch && (() => {
         // Only metrics whose underlying module is enabled. Hide the whole
         // card if every metric got filtered out.
         const visibleMetrics = COMPARISON_METRICS.filter(
@@ -1196,7 +1775,7 @@ export default function OverviewPage() {
         );
       })()}
 
-      {isOwner && storeStatuses.length > 0 && (
+      {showMultiBranch && (
         <div>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
