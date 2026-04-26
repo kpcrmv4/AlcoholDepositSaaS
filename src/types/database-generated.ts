@@ -1052,6 +1052,8 @@ export type Database = {
       }
       deposits: {
         Row: {
+          cancelled_at: string | null
+          cancelled_by: string | null
           category: string | null
           confirm_photo_url: string | null
           created_at: string | null
@@ -1079,6 +1081,8 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           category?: string | null
           confirm_photo_url?: string | null
           created_at?: string | null
@@ -1106,6 +1110,8 @@ export type Database = {
           tenant_id: string
         }
         Update: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           category?: string | null
           confirm_photo_url?: string | null
           created_at?: string | null
@@ -2852,6 +2858,7 @@ export type Database = {
         | "withdrawn"
         | "expired"
         | "transferred_out"
+        | "cancelled"
       hq_deposit_status: "awaiting_withdrawal" | "withdrawn"
       line_mode: "tenant" | "per_store"
       platform_admin_role: "super_admin" | "admin" | "support" | "readonly"
@@ -3018,6 +3025,7 @@ export const Constants = {
         "withdrawn",
         "expired",
         "transferred_out",
+        "cancelled",
       ],
       hq_deposit_status: ["awaiting_withdrawal", "withdrawn"],
       line_mode: ["tenant", "per_store"],

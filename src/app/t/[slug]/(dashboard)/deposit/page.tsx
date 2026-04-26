@@ -129,6 +129,7 @@ const statusVariantMap: Record<string, 'default' | 'success' | 'warning' | 'dang
   expired: 'danger',
   transfer_pending: 'warning',
   transferred_out: 'info',
+  cancelled: 'default',
   // Virtual status used for deposit_requests rendered as virtual deposit rows
   request: 'warning',
 };

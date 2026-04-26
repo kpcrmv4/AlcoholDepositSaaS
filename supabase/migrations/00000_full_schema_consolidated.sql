@@ -34,7 +34,7 @@ CREATE TYPE platform_admin_role AS ENUM ('super_admin', 'admin', 'support', 'rea
 
 -- Domain enums (existing)
 CREATE TYPE user_role AS ENUM ('owner', 'accountant', 'manager', 'bar', 'staff', 'customer', 'hq');
-CREATE TYPE deposit_status AS ENUM ('pending_confirm', 'in_store', 'pending_withdrawal', 'withdrawn', 'expired', 'transfer_pending', 'transferred_out');
+CREATE TYPE deposit_status AS ENUM ('pending_confirm', 'in_store', 'pending_withdrawal', 'withdrawn', 'expired', 'transfer_pending', 'transferred_out', 'cancelled');
 CREATE TYPE comparison_status AS ENUM ('pending', 'explained', 'approved', 'rejected');
 CREATE TYPE withdrawal_status AS ENUM ('pending', 'approved', 'completed', 'rejected');
 CREATE TYPE transfer_status AS ENUM ('pending', 'confirmed', 'rejected');
@@ -421,6 +421,8 @@ CREATE TABLE deposits (
   confirm_photo_url   TEXT,         -- bar confirmed
   is_vip              BOOLEAN DEFAULT false,  -- VIP = no expiry
   is_no_deposit       BOOLEAN DEFAULT false,  -- created as expired for HQ transfer
+  cancelled_by        UUID REFERENCES profiles(id),
+  cancelled_at        TIMESTAMPTZ,
   created_at          TIMESTAMPTZ DEFAULT now(),
   UNIQUE (tenant_id, deposit_code)
 );
