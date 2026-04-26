@@ -293,7 +293,11 @@ export function DepositDetail({ deposit: initialDeposit, onBack, storeName = '' 
 
   // Determine current timeline step
   const currentStatusIndex = statusTimelineKeys.findIndex((s) => s.key === deposit.status);
-  const effectiveIndex = deposit.status === 'expired' || deposit.status === 'transfer_pending' || deposit.status === 'transferred_out' ? -1 : currentStatusIndex;
+  const isBranchStatus = deposit.status === 'expired'
+    || deposit.status === 'transfer_pending'
+    || deposit.status === 'transferred_out'
+    || deposit.status === 'cancelled';
+  const effectiveIndex = isBranchStatus ? -1 : currentStatusIndex;
 
   const handleBarConfirm = async () => {
     if (!user || !currentStoreId) return;
@@ -516,7 +520,9 @@ export function DepositDetail({ deposit: initialDeposit, onBack, storeName = '' 
     const { error } = await supabase
       .from('deposits')
       .update({
-        status: 'withdrawn',
+        status: 'cancelled',
+        cancelled_by: user.id,
+        cancelled_at: new Date().toISOString(),
         notes: deposit.notes
           ? `${deposit.notes}\nปฏิเสธรับฝาก: ${rejectReason}`
           : `ปฏิเสธรับฝาก: ${rejectReason}`,
@@ -533,7 +539,7 @@ export function DepositDetail({ deposit: initialDeposit, onBack, storeName = '' 
         record_id: deposit.id,
         old_value: { status: 'pending_confirm' },
         new_value: {
-          status: 'withdrawn',
+          status: 'cancelled',
           reason: rejectReason,
           deposit_code: deposit.deposit_code,
           product_name: deposit.product_name,
@@ -1216,6 +1222,27 @@ export function DepositDetail({ deposit: initialDeposit, onBack, storeName = '' 
                     </div>
                   );
                 })}
+
+                {/* Cancelled branch — terminal status, single step */}
+                {deposit.status === 'cancelled' && (
+                  <div className="mt-1">
+                    <div className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-100 ring-2 ring-red-500 dark:bg-red-900/30">
+                          <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                        </div>
+                      </div>
+                      <div className="pb-8">
+                        <p className="text-sm font-medium text-red-600 dark:text-red-400">
+                          {t('detail.statusCancelled')}
+                        </p>
+                        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                          {t('detail.currentStatus')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Expired branch timeline */}
                 {(deposit.status === 'expired' || deposit.status === 'transfer_pending' || deposit.status === 'transferred_out') && (

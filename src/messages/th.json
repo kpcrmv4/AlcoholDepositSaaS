@@ -1295,6 +1295,7 @@
       "statusExpired": "หมดอายุ",
       "statusTransferPending": "รอนำส่ง HQ",
       "statusTransferredOut": "โอนคลังกลางแล้ว",
+      "statusCancelled": "ยกเลิกแล้ว",
       "actions": "การดำเนินการ",
       "confirmReceive": "ยืนยันรับเข้าระบบ",
       "rejectDeposit": "ปฏิเสธรับฝาก",
