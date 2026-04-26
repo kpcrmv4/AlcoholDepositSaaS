@@ -85,68 +85,71 @@ function NeonCard({
           : 'text-cyan-300';
 
   if (isPending) {
-    // pending_confirm: tap-to-cancel only when this is a deposit_request
-    // (no DEP- code yet). Real deposits in pending_confirm render as info.
-    const tappable = d.isRequest;
-    const pendingInner = (
-      <div className="flex gap-3">
-        <NeonBottle glow={glow} percent={100} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200/45">
-                {d.storeName || ''}
-              </p>
-              <h3 className="neon-display mt-0.5 truncate text-[15px] font-bold text-white">
-                {d.productName}
-              </h3>
-            </div>
-            <NeonStatusChip status="pending_confirm" t={t} />
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            {d.tableNumber && (
-              <span className="rounded-md border border-rose-400/30 bg-rose-400/10 px-1.5 py-0.5 text-[10px] font-bold text-rose-200">
-                โต๊ะ {d.tableNumber}
-              </span>
-            )}
-            <span className="font-mono text-[10.5px] text-violet-200/55">
-              {tappable ? t('tapToCancel') : t('waitingStaffConfirm')}
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-    const wrapperCls =
-      'relative w-full overflow-hidden rounded-2xl border border-rose-400/25 bg-[#0d0b1a]/85 p-3.5 text-left ring-1 ring-rose-400/10 backdrop-blur-sm';
-
+    // ALL pending_confirm rows open the detail modal on tap. Cancel button
+    // inside the modal is gated on d.isRequest (page.tsx).
     return (
       <li className="relative">
         <div
           className="pointer-events-none absolute -inset-px rounded-2xl opacity-50 blur-md"
           style={{ background: `radial-gradient(60% 60% at 30% 50%, ${glow}38, transparent 70%)` }}
         />
-        {tappable ? (
-          <button
-            type="button"
-            onClick={() => onOpenDetail(d)}
-            className={'customer-tap ' + wrapperCls}
-          >
-            {pendingInner}
-          </button>
-        ) : (
-          <div className={wrapperCls}>{pendingInner}</div>
-        )}
+        <button
+          type="button"
+          onClick={() => onOpenDetail(d)}
+          className="customer-tap relative w-full overflow-hidden rounded-2xl border border-rose-400/25 bg-[#0d0b1a]/85 p-3.5 text-left ring-1 ring-rose-400/10 backdrop-blur-sm"
+        >
+          <div className="flex gap-3">
+            <NeonBottle glow={glow} percent={100} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200/45">
+                    {d.storeName || ''}
+                  </p>
+                  <h3 className="neon-display mt-0.5 truncate text-[15px] font-bold text-white">
+                    {d.productName}
+                  </h3>
+                </div>
+                <NeonStatusChip status="pending_confirm" t={t} />
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                {d.tableNumber && (
+                  <span className="rounded-md border border-rose-400/30 bg-rose-400/10 px-1.5 py-0.5 text-[10px] font-bold text-rose-200">
+                    โต๊ะ {d.tableNumber}
+                  </span>
+                )}
+                <span className="font-mono text-[10.5px] text-violet-200/55">
+                  {d.isRequest ? t('tapToCancel') : t('tapToView')}
+                </span>
+              </div>
+            </div>
+          </div>
+        </button>
       </li>
     );
   }
 
+  // Tap on body → modal. in_store gets an inline 'ขอเบิก' shortcut button
+  // with stopPropagation; uses div+role=button for the wrapper because
+  // <button> can't legally contain another <button>.
   return (
     <li className="relative">
       <div
         className="pointer-events-none absolute -inset-px rounded-2xl opacity-50 blur-md"
         style={{ background: `radial-gradient(60% 60% at 30% 50%, ${glow}38, transparent 70%)` }}
       />
-      <div className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0b1a]/85 p-3.5 backdrop-blur-sm">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpenDetail(d)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpenDetail(d);
+          }
+        }}
+        className="customer-tap customer-focus-ring relative w-full cursor-pointer overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0b1a]/85 p-3.5 text-left backdrop-blur-sm"
+      >
         <div className="flex gap-3">
           <NeonBottle glow={glow} percent={d.remainingPercent} />
           <div className="flex min-w-0 flex-1 flex-col">
@@ -187,28 +190,28 @@ function NeonCard({
               </span>
             </div>
 
-            <div className="mt-3">
-              {isPendingW ? (
-                <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-[12px] font-bold text-cyan-200">
-                  <Clock className="h-3.5 w-3.5" />
-                  {t('pendingWithdrawal')}
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onWithdraw(d)}
-                  disabled={!canWithdraw}
-                  className="customer-tap flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-violet-500 px-3 py-2 text-[12px] font-black text-white shadow-[0_0_18px_rgba(232,121,249,0.45)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isRequesting ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Package className="h-3.5 w-3.5" />
-                  )}
-                  {isRequesting ? t('requesting') : t('requestWithdrawal')}
-                </button>
-              )}
-            </div>
+            {isInStore ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onWithdraw(d);
+                }}
+                disabled={!canWithdraw}
+                className="customer-tap mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-violet-500 px-3 py-2 text-[12px] font-black text-white shadow-[0_0_18px_rgba(232,121,249,0.45)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isRequesting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Package className="h-3.5 w-3.5" />
+                )}
+                {isRequesting ? t('requesting') : t('requestWithdrawal')}
+              </button>
+            ) : (
+              <p className="mt-2 font-mono text-[10.5px] text-violet-200/55">
+                {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+              </p>
+            )}
           </div>
         </div>
       </div>

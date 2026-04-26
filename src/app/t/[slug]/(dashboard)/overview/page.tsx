@@ -60,6 +60,7 @@ import {
   ChevronDown,
   ChevronUp,
   BarChart2,
+  Hourglass,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -1217,6 +1218,17 @@ export default function OverviewPage() {
               )}
             </button>
           </div>
+          {/* hasHqBranch: when no active store is the central HQ, the
+           * 'รอนำส่ง HQ' label below relabels to 'รอจำหน่ายออก' so the
+           * copy matches single-branch tenants who don't have a central
+           * warehouse to ship up to. Mirrors the same conditional already
+           * applied on /deposit. */}
+          {(() => {
+            const hasHqBranch = storeStatuses.some((s) => s.isCentral);
+            const transferPendingLabel = hasHqBranch
+              ? t('storeStatus.pendingToHq')
+              : t('storeStatus.pendingToSale');
+            return (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {storeStatuses.map((store) => {
               // Amber tint + badge reflect deposits awaiting bar confirmation —
@@ -1365,6 +1377,24 @@ export default function OverviewPage() {
                           <div className="flex justify-between items-center">
                             <span className={cn(
                               'flex items-center gap-1',
+                              store.pendingConfirm > 0
+                                ? 'text-amber-600 dark:text-amber-400'
+                                : 'text-gray-500 dark:text-gray-400'
+                            )}>
+                              <Hourglass className="h-3 w-3" /> {t('storeStatus.pendingReceipt')}
+                            </span>
+                            <span className={cn(
+                              'font-medium',
+                              store.pendingConfirm > 0
+                                ? 'text-amber-600 dark:text-amber-400'
+                                : 'text-gray-900 dark:text-white'
+                            )}>
+                              {store.pendingConfirm}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className={cn(
+                              'flex items-center gap-1',
                               store.expiringDeposits > 0
                                 ? 'text-orange-600 dark:text-orange-400'
                                 : 'text-gray-500 dark:text-gray-400'
@@ -1387,7 +1417,7 @@ export default function OverviewPage() {
                                 ? 'text-cyan-600 dark:text-cyan-400'
                                 : 'text-gray-500 dark:text-gray-400'
                             )}>
-                              <ArrowRightLeft className="h-3 w-3" /> {t('storeStatus.pendingToHq')}
+                              <ArrowRightLeft className="h-3 w-3" /> {transferPendingLabel}
                             </span>
                             <span className={cn(
                               'font-medium',
@@ -1489,6 +1519,8 @@ export default function OverviewPage() {
               );
             })}
           </div>
+            );
+          })()}
         </div>
       )}
 

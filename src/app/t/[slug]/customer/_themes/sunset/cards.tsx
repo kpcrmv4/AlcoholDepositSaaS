@@ -72,9 +72,6 @@ function SunsetCard({
   const days = d.expiryDate ? daysUntil(d.expiryDate) : null;
   const isPending = d.status === 'pending_confirm';
   const isPendingW = d.status === 'pending_withdrawal';
-  // Tap-to-cancel only fires for deposit_requests (no DEP- code yet).
-  // Real deposits in pending_confirm render as info-only.
-  const tappable = isPending && d.isRequest;
   const isInStore = d.status === 'in_store';
   const canWithdraw = isInStore && !isRequesting;
   const liquid = STATUS_LIQUID[d.status] ?? '#ea580c';
@@ -141,28 +138,28 @@ function SunsetCard({
                 </span>
               </div>
 
-              <div className="mt-3">
-                {isPendingW ? (
-                  <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-100 px-3 py-2 text-[12px] font-bold text-teal-800">
-                    <Clock className="h-3.5 w-3.5" />
-                    {t('pendingWithdrawal')}
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onWithdraw(d)}
-                    disabled={!canWithdraw}
-                    className="customer-tap flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 px-3 py-2 text-[12px] font-black text-white shadow-md shadow-orange-400/40 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isRequesting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Package className="h-3.5 w-3.5" />
-                    )}
-                    {isRequesting ? t('requesting') : t('requestWithdrawal')}
-                  </button>
-                )}
-              </div>
+              {isInStore ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onWithdraw(d);
+                  }}
+                  disabled={!canWithdraw}
+                  className="customer-tap mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 px-3 py-2 text-[12px] font-black text-white shadow-md shadow-orange-400/40 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRequesting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Package className="h-3.5 w-3.5" />
+                  )}
+                  {isRequesting ? t('requesting') : t('requestWithdrawal')}
+                </button>
+              ) : (
+                <p className="mt-2 text-[10.5px] font-semibold text-orange-900/55">
+                  {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+                </p>
+              )}
             </>
           ) : (
             <div className="mt-2 flex items-center gap-2">
@@ -172,7 +169,7 @@ function SunsetCard({
                 </span>
               )}
               <span className="font-medium text-[10.5px] text-orange-900/65">
-                {tappable ? t('tapToCancel') : t('waitingStaffConfirm')}
+                {d.isRequest ? t('tapToCancel') : t('tapToView')}
               </span>
             </div>
           )}
@@ -181,20 +178,27 @@ function SunsetCard({
     </>
   );
 
-  if (tappable) {
-    return (
-      <li>
-        <button
-          type="button"
-          onClick={() => onOpenDetail(d)}
-          className={'customer-tap w-full text-left ' + wrapperCls}
-        >
-          {bodyContent}
-        </button>
-      </li>
-    );
-  }
-  return <li className={wrapperCls}>{bodyContent}</li>;
+  // Whole card is the tap target → opens the detail modal. in_store rows
+  // also include an inline 'ขอเบิก' button (with stopPropagation) as a
+  // fast path; div+role=button avoids invalid nested buttons.
+  return (
+    <li>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpenDetail(d)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpenDetail(d);
+          }
+        }}
+        className={'customer-tap customer-focus-ring w-full cursor-pointer text-left ' + wrapperCls}
+      >
+        {bodyContent}
+      </div>
+    </li>
+  );
 }
 
 function SunsetBottle({ liquid, percent }: { liquid: string; percent: number }) {

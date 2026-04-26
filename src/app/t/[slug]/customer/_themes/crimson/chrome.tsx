@@ -137,7 +137,12 @@ export function CrimsonView({
           </div>
         )}
 
-        {/* Search — cream input on wine bg */}
+        {/* Search — cream input on wine bg. The leading icon sits at left
+         * 14px (h-4 w-4 → 16px wide → ends at 30px), so the input needs
+         * paddingLeft >= 38px. Tailwind v4 puts `pl-10` in @layer utilities
+         * which is OUTRANKED by unlayered .theme-input padding rules — so
+         * the previous `pl-10` class lost the cascade fight and text slid
+         * back under the icon. Inline style sidesteps the layer order. */}
         <div className="relative mb-3.5">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7a1a1a]/55" />
           <input
@@ -145,7 +150,8 @@ export function CrimsonView({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('searchPlaceholder')}
-            className="theme-input pl-10"
+            className="theme-input"
+            style={{ paddingLeft: 40 }}
           />
           {searchQuery && (
             <button

@@ -67,11 +67,9 @@ function CrimsonCard({
   const isPendingW = d.status === 'pending_withdrawal';
   const isInStore = d.status === 'in_store';
   const canWithdraw = isInStore && !isRequesting;
-  // Cancel-modal tap is only meaningful for deposit_requests (no DEP- code
-  // yet, awaiting staff approval). Real deposits in pending_confirm state
-  // (already have a DEP- code) can't be cancelled by the customer — those
-  // render as info-only cards.
-  const tappable = isPending && d.isRequest;
+  // ALL pending_confirm rows open the detail modal on tap. Modal then
+  // shows a Cancel button only when d.isRequest is true (deposit_request
+  // the customer can pull back); real deposits get info + close-only.
 
   const expiryTone =
     days === null
@@ -146,28 +144,28 @@ function CrimsonCard({
                 </span>
               </div>
 
-              <div className="mt-3">
-                {isPendingW ? (
-                  <div className="flex items-center justify-center gap-2 rounded-md border border-[#7a1a1a]/25 bg-[#7a1a1a]/5 py-2 text-[12px] font-bold text-[#7a1a1a]">
-                    <Clock className="h-3.5 w-3.5" />
-                    {t('pendingWithdrawal')}
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onWithdraw(d)}
-                    disabled={!canWithdraw}
-                    className="customer-tap flex w-full items-center justify-center gap-2 rounded-md bg-[#7a1a1a] py-2 text-[12px] font-bold text-[#faf3e8] shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isRequesting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Package className="h-3.5 w-3.5" />
-                    )}
-                    {isRequesting ? t('requesting') : t('requestWithdrawal')}
-                  </button>
-                )}
-              </div>
+              {isInStore ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onWithdraw(d);
+                  }}
+                  disabled={!canWithdraw}
+                  className="customer-tap mt-3 flex w-full items-center justify-center gap-2 rounded-md bg-[#7a1a1a] py-2 text-[12px] font-bold text-[#faf3e8] shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRequesting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Package className="h-3.5 w-3.5" />
+                  )}
+                  {isRequesting ? t('requesting') : t('requestWithdrawal')}
+                </button>
+              ) : (
+                <p className="crimson-script mt-2 text-[13px] leading-none text-[#7a1a1a]/65">
+                  {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+                </p>
+              )}
             </>
           ) : (
             <div className="mt-2 flex items-center gap-2">
@@ -177,7 +175,7 @@ function CrimsonCard({
                 </span>
               )}
               <span className="crimson-script text-[13px] text-[#7a1a1a]/75">
-                {tappable ? t('tapToCancel') : t('waitingStaffConfirm')}
+                {d.isRequest ? t('tapToCancel') : t('tapToView')}
               </span>
             </div>
           )}
@@ -186,20 +184,26 @@ function CrimsonCard({
     </>
   );
 
-  if (tappable) {
-    return (
-      <li>
-        <button
-          type="button"
-          onClick={() => onOpenDetail(d)}
-          className={'customer-tap w-full text-left ' + cardCls}
-        >
-          {inner}
-        </button>
-      </li>
-    );
-  }
-  return <li className={cardCls}>{inner}</li>;
+  // Whole card → modal. in_store rows include an inline ขอเบิก button
+  // (with stopPropagation). div+role=button keeps HTML valid.
+  return (
+    <li>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpenDetail(d)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpenDetail(d);
+          }
+        }}
+        className={'customer-tap customer-focus-ring w-full cursor-pointer text-left ' + cardCls}
+      >
+        {inner}
+      </div>
+    </li>
+  );
 }
 
 function CrimsonBottle({ pending, percent }: { pending?: boolean; percent: number }) {

@@ -68,7 +68,6 @@ function AmberCard({
   const isPending = d.status === 'pending_confirm';
   const isPendingW = d.status === 'pending_withdrawal';
   const isInStore = d.status === 'in_store';
-  const canWithdraw = isInStore && !isRequesting;
 
   const expiryTone =
     days === null
@@ -81,117 +80,115 @@ function AmberCard({
             ? 'text-amber-300'
             : 'text-emerald-300/85';
 
-  // pending_confirm rows split:
-  //   isRequest=true  → deposit_request waiting for staff approval; tap
-  //                     opens the cancel modal
-  //   isRequest=false → real deposit awaiting bar confirm; info-only
-  const tappable = isPending && d.isRequest;
-
+  // ALL pending_confirm rows open the detail modal on tap. The modal
+  // (in page.tsx) decides whether to render a Cancel button — only
+  // deposit_requests (d.isRequest=true) get one; real deposits in
+  // pending_confirm get info + close.
   if (isPending) {
-    const pendingInner = (
-      <div className="flex gap-3">
-        <AmberBottleSvg hue="#7a3b0f" percent={100} pending />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="amber-serif truncate text-[15px] font-semibold text-amber-50">
-                {d.productName}
-              </h3>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                {d.tableNumber && (
-                  <span className="rounded-md bg-amber-200/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200/85">
-                    โต๊ะ {d.tableNumber}
-                  </span>
-                )}
-              </div>
-            </div>
-            <AmberStatusChip status="pending_confirm" t={t} />
-          </div>
-          <p className="mt-2 text-[11px] text-amber-300/80">
-            {tappable ? t('tapToCancel') : t('waitingStaffConfirm')}
-          </p>
-        </div>
-      </div>
-    );
-
-    const cardCls =
-      'w-full overflow-hidden rounded-2xl border border-amber-300/25 bg-gradient-to-b from-amber-950/70 to-[#1a130d] p-3.5 text-left shadow-lg shadow-black/30';
-
-    if (tappable) {
-      return (
-        <li>
-          <button
-            type="button"
-            onClick={() => onOpenDetail(d)}
-            className={'customer-tap transition hover:border-amber-300/40 ' + cardCls}
-          >
-            {pendingInner}
-          </button>
-        </li>
-      );
-    }
     return (
       <li>
-        <div className={cardCls}>{pendingInner}</div>
+        <button
+          type="button"
+          onClick={() => onOpenDetail(d)}
+          className="customer-tap w-full overflow-hidden rounded-2xl border border-amber-300/25 bg-gradient-to-b from-amber-950/70 to-[#1a130d] p-3.5 text-left shadow-lg shadow-black/30 transition hover:border-amber-300/40"
+        >
+          <div className="flex gap-3">
+            <AmberBottleSvg hue="#7a3b0f" percent={100} pending />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="amber-serif truncate text-[15px] font-semibold text-amber-50">
+                    {d.productName}
+                  </h3>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    {d.tableNumber && (
+                      <span className="rounded-md bg-amber-200/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200/85">
+                        โต๊ะ {d.tableNumber}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <AmberStatusChip status="pending_confirm" t={t} />
+              </div>
+              <p className="mt-2 text-[11px] text-amber-300/80">
+                {d.isRequest ? t('tapToCancel') : t('tapToView')}
+              </p>
+            </div>
+          </div>
+        </button>
       </li>
     );
   }
 
+  // Tap on card body → modal. For in_store rows we ALSO render an inline
+  // 'ขอเบิก' button as a fast path; clicking it stops propagation so it
+  // doesn't trigger the modal open. Wrapper is a div+role=button (not a
+  // <button>) because nesting <button> inside <button> is invalid HTML.
+  const canWithdraw = isInStore && !isRequesting;
+
   return (
-    <li className="overflow-hidden rounded-2xl border border-amber-200/10 bg-gradient-to-b from-[#1c150f] to-[#13100c] shadow-lg shadow-black/30">
-      <div className="flex gap-3 p-3.5">
-        <AmberBottleSvg hue="#a06b32" percent={d.remainingPercent} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="amber-serif truncate text-[15px] font-semibold text-amber-50">
-                {d.productName}
-              </h3>
-              {d.code && (
-                <span className="mt-0.5 inline-block font-mono text-[10.5px] text-amber-200/40">
-                  {d.code}
-                </span>
-              )}
-            </div>
-            <AmberStatusChip status={d.status} t={t} />
-          </div>
-
-          <div className="mt-2 flex items-center gap-2">
-            <AmberFillBar percent={d.remainingPercent} />
-            <span className="amber-serif min-w-[34px] text-right text-[12px] font-semibold text-amber-100">
-              {d.remainingPercent}%
-            </span>
-          </div>
-
-          <div className="mt-2 flex items-center justify-between text-[11px]">
-            <span className="text-amber-200/55">
-              {t('bottlesLabel')} ·{' '}
-              <span className="font-semibold text-amber-100/85">{d.remainingQty}</span>
-            </span>
-            <span className={'font-medium ' + expiryTone}>
-              {days === null
-                ? t('noExpiry')
-                : days <= 0
-                  ? t('expired')
-                  : days === 1
-                    ? t('expiresTomorrow')
-                    : t('expiresInDays', { days })}
-            </span>
-          </div>
-
-          {/* Action */}
-          <div className="mt-3">
-            {isPendingW ? (
-              <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-300/10 px-3 py-2 text-[12px] font-semibold text-sky-200">
-                <Clock className="h-3.5 w-3.5" />
-                {t('pendingWithdrawal')}
+    <li>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpenDetail(d)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpenDetail(d);
+          }
+        }}
+        className="customer-tap customer-focus-ring w-full cursor-pointer overflow-hidden rounded-2xl border border-amber-200/10 bg-gradient-to-b from-[#1c150f] to-[#13100c] p-3.5 text-left shadow-lg shadow-black/30 transition hover:border-amber-200/25"
+      >
+        <div className="flex gap-3">
+          <AmberBottleSvg hue="#a06b32" percent={d.remainingPercent} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="amber-serif truncate text-[15px] font-semibold text-amber-50">
+                  {d.productName}
+                </h3>
+                {d.code && (
+                  <span className="mt-0.5 inline-block font-mono text-[10.5px] text-amber-200/40">
+                    {d.code}
+                  </span>
+                )}
               </div>
-            ) : (
+              <AmberStatusChip status={d.status} t={t} />
+            </div>
+
+            <div className="mt-2 flex items-center gap-2">
+              <AmberFillBar percent={d.remainingPercent} />
+              <span className="amber-serif min-w-[34px] text-right text-[12px] font-semibold text-amber-100">
+                {d.remainingPercent}%
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-center justify-between text-[11px]">
+              <span className="text-amber-200/55">
+                {t('bottlesLabel')} ·{' '}
+                <span className="font-semibold text-amber-100/85">{d.remainingQty}</span>
+              </span>
+              <span className={'font-medium ' + expiryTone}>
+                {days === null
+                  ? t('noExpiry')
+                  : days <= 0
+                    ? t('expired')
+                    : days === 1
+                      ? t('expiresTomorrow')
+                      : t('expiresInDays', { days })}
+              </span>
+            </div>
+
+            {isInStore ? (
               <button
                 type="button"
-                onClick={() => onWithdraw(d)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onWithdraw(d);
+                }}
                 disabled={!canWithdraw}
-                className="customer-tap flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 px-3 py-2 text-[12px] font-bold text-[#1a1108] shadow-sm shadow-amber-500/20 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                className="customer-tap mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 px-3 py-2 text-[12px] font-bold text-[#1a1108] shadow-sm shadow-amber-500/20 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isRequesting ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -200,6 +197,10 @@ function AmberCard({
                 )}
                 {isRequesting ? t('requesting') : t('requestWithdrawal')}
               </button>
+            ) : (
+              <p className="mt-2 text-[10.5px] font-medium text-amber-200/55">
+                {isPendingW ? t('pendingWithdrawal') : t('tapToView')}
+              </p>
             )}
           </div>
         </div>

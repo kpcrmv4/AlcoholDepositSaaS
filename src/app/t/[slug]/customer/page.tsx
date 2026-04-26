@@ -18,11 +18,15 @@ import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/stores/app-store';
 import type { Locale } from '@/i18n/config';
 import { useCustomerAuth } from './_components/customer-provider';
-import { daysUntil } from '@/lib/utils/format';
+import { daysUntil, formatThaiDate, formatNumber } from '@/lib/utils/format';
 import {
   Loader2,
   AlertCircle,
   X,
+  Package,
+  Clock,
+  CheckCircle2,
+  Hourglass,
 } from 'lucide-react';
 import { ThemedCustomerView } from './_themes';
 import type {
@@ -350,12 +354,25 @@ export default function CustomerPage() {
         onToggleAppTheme={onToggleAppTheme}
       />
 
-      {detail && detail.isRequest && (
-        <RequestDetailModal
+      {/* Detail modal — shown for ANY card the customer taps. Action footer
+       * adapts to the row's status:
+       *   pending_confirm + isRequest → Cancel + Close
+       *   pending_confirm + !isRequest → Close only (waiting for staff)
+       *   in_store                    → Withdraw + Close
+       *   pending_withdrawal          → Close only (already requested)
+       *   expired                     → Close only (no actions left)
+       */}
+      {detail && (
+        <DepositDetailModal
           item={detail}
           isCancelling={isCancelling}
+          isRequesting={requestingId === detail.id}
           onClose={() => setDetail(null)}
           onCancel={handleCancelRequest}
+          onWithdraw={(d) => {
+            handleRequestWithdrawal(d);
+            setDetail(null);
+          }}
         />
       )}
     </>
@@ -363,18 +380,29 @@ export default function CustomerPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Pending-request detail / cancel modal — kept theme-neutral.
+// Deposit detail modal — single theme-neutral surface every card opens.
+//
+// Status-driven layout:
+//   pending_confirm + isRequest     → Cancel + Close
+//   pending_confirm + !isRequest    → Close (waiting for staff to confirm)
+//   in_store                        → Withdraw (ขอเบิก) + Close
+//   pending_withdrawal              → Close (already requested, info only)
+//   expired                         → Close (no actions left)
 // ---------------------------------------------------------------------------
-function RequestDetailModal({
+function DepositDetailModal({
   item,
   isCancelling,
+  isRequesting,
   onClose,
   onCancel,
+  onWithdraw,
 }: {
   item: DepositItem;
   isCancelling: boolean;
+  isRequesting: boolean;
   onClose: () => void;
   onCancel: () => void;
+  onWithdraw: (d: DepositItem) => void;
 }) {
   const submittedAt = new Date(item.depositDate).toLocaleString('th-TH', {
     day: 'numeric',
@@ -382,6 +410,42 @@ function RequestDetailModal({
     hour: '2-digit',
     minute: '2-digit',
   });
+
+  const canWithdraw = item.status === 'in_store' && !isRequesting;
+  const days = item.expiryDate ? daysUntil(item.expiryDate) : null;
+
+  // Headline subtitle and status pill driven by status + isRequest.
+  let subtitle = 'รายละเอียดการฝาก';
+  let pillClass = 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300';
+  let pillIcon: React.ReactNode = null;
+  let pillLabel = '';
+  if (item.status === 'pending_confirm') {
+    subtitle = item.isRequest
+      ? 'คำขอฝากเหล้า · รอ Staff อนุมัติ'
+      : 'รายละเอียดการฝาก · รอพนักงานยืนยัน';
+    pillClass = 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200';
+    pillIcon = <Hourglass className="h-3 w-3" />;
+    pillLabel = 'รอยืนยัน';
+  } else if (item.status === 'in_store') {
+    subtitle = 'ของฝากของคุณ';
+    pillClass = 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200';
+    pillIcon = <CheckCircle2 className="h-3 w-3" />;
+    pillLabel = 'พร้อมเบิก';
+  } else if (item.status === 'pending_withdrawal') {
+    subtitle = 'คำขอเบิก · กำลังรอ Staff';
+    pillClass = 'border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-200';
+    pillIcon = <Clock className="h-3 w-3" />;
+    pillLabel = 'รอเบิก';
+  } else if (item.status === 'expired') {
+    subtitle = 'ของฝากหมดอายุ';
+    pillClass = 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200';
+    pillIcon = <AlertCircle className="h-3 w-3" />;
+    pillLabel = 'หมดอายุ';
+  }
+
+  // Quantity / remaining row — only meaningful for confirmed deposits.
+  const showRemaining =
+    item.status === 'in_store' || item.status === 'pending_withdrawal';
 
   return (
     <div
@@ -397,11 +461,17 @@ function RequestDetailModal({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
-              คำขอฝากเหล้า · รอ Staff อนุมัติ
+              {subtitle}
             </p>
             <h3 className="mt-0.5 truncate text-base font-bold text-slate-900 dark:text-slate-50">
               {item.storeName || 'ร้าน'}
             </h3>
+            {pillLabel && (
+              <span className={'mt-1.5 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ' + pillClass}>
+                {pillIcon}
+                {pillLabel}
+              </span>
+            )}
           </div>
           <button
             type="button"
@@ -423,36 +493,116 @@ function RequestDetailModal({
         )}
 
         <dl className="mt-3 space-y-1.5 rounded-xl bg-slate-50 px-3 py-2.5 text-sm dark:bg-slate-800/60">
-          <DetailRow label="ชื่อ" value={item.customerName || '—'} />
+          <DetailRow label="รายการ" value={item.productName} />
+          {item.code && <DetailRow label="รหัสฝาก" value={item.code} />}
+          {showRemaining && (
+            <DetailRow
+              label="คงเหลือ"
+              value={`${item.remainingPercent}% (${formatNumber(item.remainingQty)} ขวด)`}
+            />
+          )}
+          {item.expiryDate && (
+            <DetailRow
+              label="หมดอายุ"
+              value={
+                days !== null && days <= 0
+                  ? `${formatThaiDate(item.expiryDate)} (หมดอายุแล้ว)`
+                  : days !== null && days <= 7
+                    ? `${formatThaiDate(item.expiryDate)} (เหลือ ${days} วัน)`
+                    : formatThaiDate(item.expiryDate)
+              }
+            />
+          )}
+          {item.customerName && <DetailRow label="ชื่อ" value={item.customerName} />}
           {item.customerPhone && <DetailRow label="เบอร์โทร" value={item.customerPhone} />}
           {item.tableNumber && <DetailRow label="โต๊ะ" value={item.tableNumber} />}
-          <DetailRow label="รายการ" value={item.productName} />
           {item.notes && <DetailRow label="หมายเหตุ" value={item.notes} />}
           <DetailRow label="ส่งเมื่อ" value={submittedAt} />
         </dl>
 
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row-reverse">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isCancelling}
-            className="customer-tap customer-focus-ring flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isCancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
-            {isCancelling ? 'กำลังยกเลิก...' : 'ยกเลิกคำขอ'}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isCancelling}
-            className="customer-tap customer-focus-ring flex flex-1 items-center justify-center rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-          >
-            ปิด
-          </button>
-        </div>
+        {/* Status-driven action footer */}
+        <ModalActions
+          item={item}
+          canWithdraw={canWithdraw}
+          isRequesting={isRequesting}
+          isCancelling={isCancelling}
+          onCancel={onCancel}
+          onWithdraw={onWithdraw}
+          onClose={onClose}
+        />
       </div>
     </div>
   );
+}
+
+function ModalActions({
+  item,
+  canWithdraw,
+  isRequesting,
+  isCancelling,
+  onCancel,
+  onWithdraw,
+  onClose,
+}: {
+  item: DepositItem;
+  canWithdraw: boolean;
+  isRequesting: boolean;
+  isCancelling: boolean;
+  onCancel: () => void;
+  onWithdraw: (d: DepositItem) => void;
+  onClose: () => void;
+}) {
+  const closeBtn = (
+    <button
+      type="button"
+      onClick={onClose}
+      disabled={isCancelling}
+      className="customer-tap customer-focus-ring flex flex-1 items-center justify-center rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+    >
+      ปิด
+    </button>
+  );
+
+  if (item.status === 'pending_confirm' && item.isRequest) {
+    return (
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row-reverse">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isCancelling}
+          className="customer-tap customer-focus-ring flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isCancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+          {isCancelling ? 'กำลังยกเลิก...' : 'ยกเลิกคำขอ'}
+        </button>
+        {closeBtn}
+      </div>
+    );
+  }
+
+  if (item.status === 'in_store') {
+    return (
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row-reverse">
+        <button
+          type="button"
+          onClick={() => onWithdraw(item)}
+          disabled={!canWithdraw}
+          className="customer-tap customer-focus-ring flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isRequesting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Package className="h-4 w-4" />
+          )}
+          {isRequesting ? 'กำลังส่งคำขอ...' : 'ขอเบิกเหล้า'}
+        </button>
+        {closeBtn}
+      </div>
+    );
+  }
+
+  // pending_withdrawal / expired / pending_confirm-non-request — close only
+  return <div className="mt-4">{closeBtn}</div>;
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
