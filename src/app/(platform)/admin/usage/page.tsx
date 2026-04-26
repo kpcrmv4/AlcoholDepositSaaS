@@ -20,7 +20,7 @@ export default async function UsagePage() {
   const [{ data: branches }, { data: users }, { data: deposits }] = await Promise.all([
     supabase.from('stores').select('tenant_id').in('tenant_id', ids).eq('active', true),
     supabase.from('profiles').select('tenant_id').in('tenant_id', ids).eq('active', true),
-    supabase.from('deposits').select('tenant_id').in('tenant_id', ids).gte('created_at', monthStart.toISOString()),
+    supabase.from('deposits').select('tenant_id').in('tenant_id', ids).gte('created_at', monthStart.toISOString()).neq('status', 'cancelled'),
   ]);
 
   const counts = new Map<string, { b: number; u: number; d: number }>();

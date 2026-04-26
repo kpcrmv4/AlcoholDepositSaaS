@@ -1053,6 +1053,7 @@
       "pendingConfirm": "รอยืนยัน",
       "expired": "หมดอายุ",
       "transferPending": "รอนำส่ง HQ",
+      "cancelled": "ปฏิเสธ/ยกเลิก",
       "vip": "VIP"
     },
     "table": {

@@ -129,12 +129,12 @@ const statusVariantMap: Record<string, 'default' | 'success' | 'warning' | 'dang
   expired: 'danger',
   transfer_pending: 'warning',
   transferred_out: 'info',
-  cancelled: 'default',
+  cancelled: 'danger',
   // Virtual status used for deposit_requests rendered as virtual deposit rows
   request: 'warning',
 };
 
-const DEPOSIT_TAB_IDS = ['all', 'request', 'in_store', 'pending_confirm', 'expired', 'transfer_pending', 'vip'] as const;
+const DEPOSIT_TAB_IDS = ['all', 'request', 'in_store', 'pending_confirm', 'expired', 'transfer_pending', 'cancelled', 'vip'] as const;
 const DEPOSIT_TAB_KEYS: Record<string, string> = {
   all: 'tabs.all',
   request: 'tabs.request',
@@ -142,11 +142,15 @@ const DEPOSIT_TAB_KEYS: Record<string, string> = {
   pending_confirm: 'tabs.pendingConfirm',
   expired: 'tabs.expired',
   transfer_pending: 'tabs.transferPending',
+  cancelled: 'tabs.cancelled',
   vip: 'tabs.vip',
 };
 
 const PAGE_SIZE = 50;
-const ACTIVE_STATUSES = ['in_store', 'pending_confirm', 'pending_withdrawal', 'transfer_pending', 'expired'];
+// Statuses loaded by default. Cancelled is included so the "ปฏิเสธ/ยกเลิก"
+// tab works without an extra round-trip; the "ทั้งหมด" tab still shows
+// them alongside other terminal rows for parity with withdrawn/transferred.
+const ACTIVE_STATUSES = ['in_store', 'pending_confirm', 'pending_withdrawal', 'transfer_pending', 'expired', 'cancelled'];
 
 export default function DepositPage() {
   const t = useTranslations('deposit');
@@ -203,6 +207,7 @@ export default function DepositPage() {
     transferPendingCount: 0,
     pendingWithdrawalCount: 0,
     pendingRequestsCount: 0,
+    cancelledCount: 0,
   });
 
   // Handle action query parameter (e.g. ?action=new or ?action=withdraw)
@@ -278,16 +283,18 @@ export default function DepositPage() {
       { count: transferPendingCount },
       { count: pendingWithdrawalCount },
       { count: pendingRequestsCount },
+      { count: cancelledCount },
     ] = await Promise.all([
       withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('status', 'in_store')),
       withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('status', 'pending_confirm')),
       withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('status', 'expired')),
-      withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('is_vip', true)),
+      withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('is_vip', true).neq('status', 'cancelled')),
       withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('status', 'transfer_pending')),
       withDateFilter(supabase.from('withdrawals').select('*', { count: 'exact', head: true }).eq('store_id', storeId).in('status', ['pending', 'approved'])),
       // Customer LIFF deposit_requests waiting for staff approval — never date-filtered
       // because the dashboard's date range applies to the working shift, not request age.
       supabase.from('deposit_requests').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('status', 'pending'),
+      withDateFilter(supabase.from('deposits').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('status', 'cancelled')),
     ]);
 
     setStats({
@@ -298,6 +305,7 @@ export default function DepositPage() {
       transferPendingCount: transferPendingCount || 0,
       pendingWithdrawalCount: pendingWithdrawalCount || 0,
       pendingRequestsCount: pendingRequestsCount || 0,
+      cancelledCount: cancelledCount || 0,
     });
   }, []);
 
@@ -819,6 +827,7 @@ export default function DepositPage() {
     if (tab.id === 'pending_confirm') return { ...tab, count: stats.pendingCount };
     if (tab.id === 'expired') return { ...tab, count: stats.expiredCount };
     if (tab.id === 'transfer_pending') return { ...tab, count: stats.transferPendingCount };
+    if (tab.id === 'cancelled') return { ...tab, count: stats.cancelledCount };
     if (tab.id === 'vip') return { ...tab, count: stats.vipCount };
     return tab;
   });
