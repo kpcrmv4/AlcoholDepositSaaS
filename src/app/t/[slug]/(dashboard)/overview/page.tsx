@@ -378,7 +378,17 @@ function mapActivity(actionType: string, tableName: string | null, t: (key: stri
     };
   }
 
-  return { label: actionType || t('activity.fallbackLabel'), icon: Clock, colorClass: 'text-gray-400' };
+  // Unknown / legacy action_type — humanize SNAKE_CASE so it doesn't
+  // surface raw identifiers like "VIP_DEPOSIT_EXPIRED" to users.
+  const humanized = actionType
+    ? actionType
+        .toLowerCase()
+        .split('_')
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ')
+    : t('activity.fallbackLabel');
+  return { label: humanized, icon: Clock, colorClass: 'text-gray-400' };
 }
 
 /** Build detail string from audit log entry */
@@ -2178,7 +2188,7 @@ export default function OverviewPage() {
                   <Link
                     key={activity.id}
                     href={href}
-                    className="flex items-start gap-3 px-5 py-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-750"
+                    className="flex items-start gap-3 px-5 py-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
                   >
                     {content}
                   </Link>
